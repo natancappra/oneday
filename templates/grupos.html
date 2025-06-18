@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Painel da Modalidade - {{ modalidade }}{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.css">
+<style>
+    /* Ajustes visuais para o chaveamento */
+    .jQBracket .team {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+    }
+    .jQBracket .win .label {
+        font-weight: bold;
+        color: #28a745;
+    }
+    .jQBracket .lose .label {
+        text-decoration: line-through;
+        color: #dc3545;
+    }
+</style>
+{% endblock %}
+
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="titulo-pagina mb-0">{{ modalidade }}</h2>
+    {% if current_user.is_authenticated and current_user.is_admin %}
+        <a href="{{ url_for('admin_master') }}" class="btn btn-sm btn-secondary">Voltar ao Painel Master</a>
+    {% endif %}
+</div>
+
+<h3 class="mt-4">Fase de Grupos</h3>
+<div class="row">
+    {% for grupo in grupos %}
+    <div class="col-lg-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">{{ grupo.nome }}</h4>
+            </div>
+            <div class="card-body">
+                <h5>Classificação</h5>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th><th scope="col">Time</th><th scope="col" title="Pontos">P</th><th scope="col" title="Jogos">J</th><th scope="col" title="Vitórias">V</th><th scope="col" title="Empates">E</th><th scope="col" title="Derrotas">D</th><th scope="col" title="Gols Pró">GP</th><th scope="col" title="Gols Contra">GC</th><th scope="col" title="Saldo de Gols">SG</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for classificacao in grupo.classificacao_ordenada %}
+                            <tr>
+                                <th>{{ loop.index }}</th>
+                                <td>
+                                    <img class="team-logo" src="{{ url_for('static', filename='uploads/' + classificacao.time.imagem) if classificacao.time.imagem else url_for('static', filename='img/default_logo.png') }}" alt="Logo">
+                                    {{ classificacao.time.nome_igreja }}
+                                </td>
+                                <td><strong>{{ classificacao.pontos }}</strong></td>
+                                <td>{{ classificacao.jogos_disputados }}</td>
+                                <td>{{ classificacao.vitorias }}</td>
+                                <td>{{ classificacao.empates }}</td>
+                                <td>{{ classificacao.derrotas }}</td>
+                                <td>{{ classificacao.gols_pro }}</td>
+                                <td>{{ classificacao.gols_contra }}</td>
+                                <td>{{ classificacao.saldo_de_gols }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-muted text-center mt-2">
+                    <small><b>P:</b> Pontos | <b>J:</b> Jogos | <b>V:</b> Vitórias | <b>E:</b> Empates | <b>D:</b> Derrotas | <b>GP:</b> Gols Pró | <b>GC:</b> Gols Contra | <b>SG:</b> Saldo de Gols</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<hr class="my-5">
+<h3 class="mt-4">Fase Final (Mata-Mata)</h3>
+
+<div id="chaveamento-mata-mata" class="p-3 border rounded bg-light"></div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.js"></script>
+<script>
+    // Este script busca os dados da nossa API e desenha o chaveamento
+    $(function() {
+        var container = $('#chaveamento-mata-mata');
+        // Pega a modalidade da URL para buscar os dados corretos
+        var modalidade = "{{ modalidade }}";
+
+        // Busca os dados na nossa nova rota API
+        $.getJSON('/api/dados_mata_mata/' + modalidade, function(data) {
+            if (data.teams.length > 0) {
+                container.bracket({
+                    init: data,
+                    skipConsolationRound: true,
+                    teamWidth: 150,
+                    matchMargin: 50,
+                    roundMargin: 50,
+                });
+            } else {
+                container.html('<p class="lead text-center">O chaveamento do mata-mata aparecerá aqui assim que a fase de grupos for concluída.</p>');
+            }
+        });
+    });
+</script>
+{% endblock %}

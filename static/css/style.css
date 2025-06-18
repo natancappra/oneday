@@ -1,0 +1,272 @@
+/* Cores personalizadas baseadas no seu design */
+:root {
+    --cor-laranja-principal: #F05E23; /* Laranja forte do fundo */
+    --cor-azul-escuro: #0D2644;      /* Azul bem escuro do logo */
+    --cor-cinza-fundo: #f0f2f5;      /* Um cinza bem claro para o corpo da página */
+}
+
+body {
+    background-color: var(--cor-cinza-fundo);
+}
+
+/* Barra de Navegação */
+.navbar.bg-light {
+    background-color: var(--cor-laranja-principal) !important; /* Força a cor laranja */
+    border-bottom: 3px solid var(--cor-azul-escuro);
+}
+
+.navbar .nav-link, .navbar .navbar-brand {
+    color: #ffffff !important; /* Cor dos links e do logo */
+    font-weight: bold;
+}
+
+.navbar .nav-link:hover {
+    color: var(--cor-azul-escuro) !important;
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 5px;
+}
+
+/* Títulos e Botões */
+/* Estilo geral para todos os H2 */
+h2 {
+    color: var(--cor-azul-escuro);
+    font-weight: bold;
+    margin-bottom: 20px;
+}
+
+/* Nova classe APENAS para os títulos com a barra lateral */
+.titulo-pagina {
+    border-left: 5px solid var(--cor-laranja-principal);
+    padding-left: 10px;
+}
+.btn-primary {
+    background-color: var(--cor-azul-escuro);
+    border-color: var(--cor-azul-escuro);
+}
+
+.btn-primary:hover {
+    background-color: #071a2f; /* Um azul um pouco mais escuro */
+    border-color: #071a2f;
+}
+
+.btn-success {
+    background-color: #28a745; /* Mantendo o verde para sucesso */
+}
+
+.btn-info {
+    background-color: #0dcaf0; /* Mantendo o ciano para informação */
+}
+/* Estilos para o novo card de jogo no chaveamento público */
+
+.game-header {
+    font-size: 0.9em;
+    color: #6c757d;
+    text-align: center;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #eee;
+    font-weight: bold;
+}
+
+.team-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 0;
+}
+
+.team-logo {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%; /* Deixa o logo redondo */
+    object-fit: cover;   /* Garante que a imagem preencha o círculo */
+    margin-right: 10px;
+    border: 1px solid #ddd;
+}
+
+.team-name {
+    flex-grow: 1; /* Faz o nome do time ocupar o espaço restante */
+    font-weight: 600;
+    color: #333;
+}
+
+.score-box {
+    font-size: 1.4em;
+    font-weight: bold;
+    color: var(--cor-azul-escuro);
+    padding: 2px 10px;
+    background-color: #f0f0f0;
+    border-radius: 5px;
+    min-width: 40px;
+    text-align: center;
+}
+
+.winner-row {
+    text-align: center;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+    font-size: 0.9em;
+    color: #28a745; /* Verde para o vencedor */
+}
+/* ============================================= */
+/* ESTILOS PARA AS SEÇÕES DE MODALIDADE (CAIXAS) */
+/* ============================================= */
+
+.modalidade-section {
+    background-color: #ffffff;    /* Fundo branco da caixa */
+    border-radius: 8px;           /* Cantos arredondados */
+    padding: 20px;                /* Espaçamento interno */
+    box-shadow: 0 4px 8px rgba(0,0,0,.1); /* Sombra suave */
+
+    /* A mágica acontece aqui: uma borda grossa no topo, mas sem cor definida ainda */
+    border-top: 5px solid transparent;
+}
+
+/* Agora definimos a cor da borda para cada modalidade */
+
+.futebol-masc-color {
+    border-top-color: #007bff; /* Azul */
+}
+
+.futebol-fem-color {
+    border-top-color: #E83E8C; /* Rosa */
+}
+
+.volei-color {
+    border-top-color: #fd7e14; /* Laranja */
+}
+
+/* Estilos para a página de Grupos */
+.table-responsive {
+    font-size: 0.9em;
+}
+
+.table th[title], .table td[title] {
+    cursor: help;
+}
+
+.team-logo {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-right: 5px;
+    vertical-align: middle;
+}
+
+.game-card-sm {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    border: 1px solid #eee;
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.score-box-sm {
+    font-weight: bold;
+    background-color: #e9ecef;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.btn-xs {
+    padding: 0.1rem 0.3rem;
+    font-size: 0.75rem;
+    line-height: 1.2;
+}
+
+/* --- VERSÃO DEFINITIVA DOS ESTILOS DO MATA-MATA --- */
+
+.chaveamento-container {
+    display: flex;
+    justify-content: center;
+    padding: 2rem 0;
+    overflow-x: auto;
+}
+
+#chaveamento-grafico {
+    background-color: #f8f9fa;
+    padding: 2rem;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.1);
+}
+
+.jQBracket .team {
+    background-color: #ffffff;
+    border-left: 1px solid #dee2e6;
+}
+
+/* Estilo para o vencedor de QUALQUER partida: apenas o nome em negrito */
+.jQBracket .team.win .label {
+    font-weight: bold;
+}
+
+/* Cor verde APENAS para o campeão do torneio (o vencedor na última rodada) */
+.jQBracket .round:last-of-type .team.win {
+    color: #198754;
+}
+
+/* Troféu APENAS para o campeão do torneio */
+.jQBracket .round:last-of-type .team.win .label:after {
+    content: '🏆';
+    font-size: 1.1rem;
+    margin-left: 8px; /* Espaço entre o nome e o troféu */
+    vertical-align: middle;
+}
+
+.jQBracket .team.lose {
+    color: #6c757d;
+}
+/* static/css/style.css */
+
+/* --- VERSÃO FINAL DOS ESTILOS DO PÓDIO --- */
+
+.podio-container {
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    padding: 2rem;
+    margin-top: 3rem;
+}
+
+.podio-card {
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    border-width: 2px;
+    border-style: solid;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+}
+
+.podio-card.ouro { background-color: #fff8e1; border-color: #ffd700; transform: scale(1.05); z-index: 10; }
+.podio-card.prata { background-color: #f8f9fa; border-color: #c0c0c0; }
+.podio-card.bronze { background-color: #fbeee4; border-color: #cd7f32; }
+
+.podio-img {
+    width: 100px; /* Tamanho fixo para a imagem */
+    height: 100px; /* Tamanho fixo para a imagem */
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 1rem;
+    border: 4px solid white;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.podio-posicao {
+    font-size: 2rem; /* Tamanho maior para a posição */
+    font-weight: bold;
+    line-height: 1;
+}
+
+.podio-nome {
+    font-size: 1.25rem; /* Nome do time maior e mais proporcional */
+    font-weight: 600;
+    margin-top: 0.5rem;
+}

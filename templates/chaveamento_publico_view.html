@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chaveamento do Campeonato (Público)</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+  <style>
+    body { background-color: var(--cor-cinza-fundo, #f0f2f5); }
+    .bracket-container { display: flex; flex-direction: column; align-items: center; gap: 30px; padding: 20px; }
+    .modalidade-section { background-color: #ffffff; border-radius: 8px; padding: 20px; box-shadow: 0 4px 8px rgba(0,0,0,.1); width: 100%; max-width: 600px; border-top: 5px solid; }
+    .modalidade-section h3 { text-align: center; margin-bottom: 20px; color: var(--cor-azul-escuro, #333); }
+    .game-card { border: 1px solid #e0e0e0; border-radius: 5px; margin-bottom: 10px; padding: 10px; background-color: #fdfdfd; }
+    .game-header { font-size: 0.9em; color: #6c757d; text-align: center; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid #eee; font-weight: bold; }
+    .team-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; }
+    .team-logo { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; margin-right: 10px; border: 1px solid #ddd; }
+    .team-name { flex-grow: 1; font-weight: 600; color: #333; }
+    .score-box { font-size: 1.4em; font-weight: bold; color: var(--cor-azul-escuro); padding: 2px 10px; background-color: #f0f0f0; border-radius: 5px; min-width: 40px; text-align: center; }
+    .winner-row { text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; font-size: 0.9em; color: #28a745; }
+    .futebol-masc-color { border-top-color: #007bff; }
+    .futebol-fem-color { border-top-color: #E83E8C; }
+    .volei-color { border-top-color: #fd7e14; }
+    .public-header { background-color: var(--cor-laranja-principal, #F05E23) !important; border-bottom: 3px solid var(--cor-azul-escuro, #0D2644); padding: 10px 0; }
+  </style>
+</head>
+<body>
+
+<nav class="public-header shadow-sm">
+  <div class="container d-flex justify-content-center">
+      <img src="{{ url_for('static', filename='img/logo.png') }}" alt="One Day Logo" style="height: 80px;">
+  </div>
+</nav>
+
+<div class="container mt-4">
+    <h2 class="text-center mb-4">Chaveamento do Campeonato</h2>
+    <p class="text-center text-muted">Acompanhe os resultados dos jogos!</p>
+
+    <div class="bracket-container">
+
+        <div class="modalidade-section futebol-masc-color">
+            <h3>Futebol Masculino</h3>
+            {% if jogos_fut_masc %}
+                {% for fase, jogos_da_fase in jogos_fut_masc.items() %}
+                    <h4 class="mt-3">{{ fase }}</h4>
+                    {% for game in jogos_da_fase %}
+                        {% include 'partials/game_card_public.html' %}
+                    {% endfor %}
+                {% endfor %}
+            {% else %}
+                <p class="text-center text-muted">Nenhum jogo de Futebol Masculino gerado ou disponível no momento.</p>
+            {% endif %}
+        </div>
+
+        <div class="modalidade-section futebol-fem-color">
+            <h3>Futebol Feminino</h3>
+            {% if jogos_fut_fem %}
+                {% for fase, jogos_da_fase in jogos_fut_fem.items() %}
+                    <h4 class="mt-3">{{ fase }}</h4>
+                    {% for game in jogos_da_fase %}
+                        {% include 'partials/game_card_public.html' %}
+                    {% endfor %}
+                {% endfor %}
+            {% else %}
+                <p class="text-center text-muted">Nenhum jogo de Futebol Feminino gerado ou disponível no momento.</p>
+            {% endif %}
+        </div>
+
+        <div class="modalidade-section volei-color">
+            <h3>Vôlei Misto</h3>
+            {% if jogos_volei %}
+                {% for fase, jogos_da_fase in jogos_volei.items() %}
+                    <h4 class="mt-3">{{ fase }}</h4>
+                    {% for game in jogos_da_fase %}
+                        {% include 'partials/game_card_public_volei.html' %}
+                    {% endfor %}
+                {% endfor %}
+            {% else %}
+                <p class="text-center text-muted">Nenhum jogo de Vôlei Misto gerado ou disponível no momento.</p>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+
+<footer class="text-center mt-5 mb-3 text-muted">
+  &copy; 2025 Campeonato ONE DAY - Feito por Natan Cappra de Oliveira
+</footer>
+
+</body>
+</html>

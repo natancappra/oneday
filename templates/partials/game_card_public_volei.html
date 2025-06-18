@@ -1,0 +1,20 @@
+<div class="game-card">
+    <div class="game-header">
+        <strong>Jogo {{ game.ordem_na_fase }}</strong>
+        {% if game.local %}<span class="mx-2">|</span> {{ game.local }}{% endif %}
+        {% if game.data_hora %}<span class="mx-2">|</span> {{ game.data_hora.strftime('%H:%M') }}h{% endif %}
+    </div>
+    <div class="team-row">
+        <img class="team-logo" src="{{ url_for('static', filename='uploads/' + game.time_a.imagem) if game.time_a and game.time_a.imagem else url_for('static', filename='img/default_logo.png') }}" alt="Logo Time A">
+        <span class="team-name">{{ game.time_a.nome_igreja if game.time_a else 'A definir' }}</span>
+        <span class="score-box">0</span>
+    </div>
+    <div class="team-row">
+        <img class="team-logo" src="{{ url_for('static', filename='uploads/' + game.time_b.imagem) if game.time_b and game.time_b.imagem else url_for('static', filename='img/default_logo.png') }}" alt="Logo Time B">
+        <span class="team-name">{{ game.time_b.nome_igreja if game.time_b else 'A definir' }}</span>
+        <span class="score-box">0</span>
+    </div>
+    {% if game.vencedor %}
+    <div class="winner-row">Vencedor: <strong>{{ game.vencedor.nome_igreja }}</strong></div>
+    {% endif %}
+</div>

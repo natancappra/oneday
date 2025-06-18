@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% block title %}Editar Time - {{ time.nome_igreja }}{% endblock %}
+{% block content %}
+<h2 class="titulo-pagina">Editar Time: {{ time.nome_igreja }}e</h2>
+<form method="POST" enctype="multipart/form-data" novalidate>
+  <div class="mb-3">
+    <label for="nome_igreja" class="form-label">Nome da Igreja</label>
+    <input type="text" class="form-control" id="nome_igreja" name="nome_igreja" value="{{ time.nome_igreja }}" required />
+  </div>
+  <div class="mb-3">
+    <label for="diretor_jovem" class="form-label">Nome do Diretor Jovem</label>
+    <input type="text" class="form-control" id="diretor_jovem" name="diretor_jovem" value="{{ time.diretor_jovem if time.diretor_jovem else '' }}" required />
+  </div>
+  <div class="mb-3">
+    <label for="distrito" class="form-label">Distrito</label>
+    <input type="text" class="form-control" id="distrito" name="distrito" value="{{ time.distrito if time.distrito else '' }}" required />
+  </div>
+  <div class="mb-3">
+    <label for="regiao" class="form-label">Região</label>
+    <select class="form-control" id="regiao" name="regiao" required>
+      <option value="">Selecione a Região</option>
+      {% for opcao in regiao_opcoes %}
+        <option value="{{ opcao }}" {% if time.regiao == opcao %}selected{% endif %}>{{ opcao }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="mb-3">
+    <label for="nome_base" class="form-label">Nome da Base</label>
+    <input type="text" class="form-control" id="nome_base" name="nome_base" value="{{ time.nome_base if time.nome_base else '' }}" required />
+  </div>
+  <div class="mb-3">
+    <label for="modalidade" class="form-label">Modalidade</label>
+    <select class="form-control" id="modalidade" name="modalidade" required>
+      <option value="Vôlei" {% if time.modalidade == 'Vôlei' %}selected{% endif %}>Vôlei</option>
+      <option value="Futebol" {% if time.modalidade == 'Futebol' %}selected{% endif %}>Futebol</option>
+    </select>
+  </div>
+  <div class="mb-3">
+    <label for="imagem" class="form-label">Imagem do Time</label>
+    {% if time.imagem %}
+      <div><img src="{{ url_for('static', filename='uploads/' + time.imagem) }}" alt="Imagem do Time" style="max-height:100px;"></div>
+    {% endif %}
+    <input type="file" class="form-control" id="imagem" name="imagem" accept="image/*" />
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Link de Pagamento (Padrão)</label>
+    <p><a href="{{ LINK_PAGAMENTO_PADRAO }}" target="_blank">{{ LINK_PAGAMENTO_PADRAO }}</a></p>
+  </div>
+  <div class="mb-3 form-check d-flex align-items-center">
+    <input type="checkbox" class="form-check-input me-2" id="pagou" name="pagou" {% if time.pagou %}checked{% endif %} />
+    <label class="form-check-label" for="pagou" id="pagou-label">Já fez o pagamento? Se sim, selecione aqui e anexe o comprovante.</label>
+  </div>
+  <div class="mb-3" id="comprovante-upload">
+    <label for="comprovante_pagamento" class="form-label">Anexar Comprovante de Pagamento (Imagem/PDF)</label>
+    <input type="file" class="form-control" id="comprovante_pagamento" name="comprovante_pagamento" accept="image/*, application/pdf" />
+    {% if time.comprovante_pagamento %}
+      <small class="form-text text-muted">Comprovante atual: <a href="{{ url_for('static', filename='uploads/' + time.comprovante_pagamento) }}" target="_blank">Ver Comprovante</a></small>
+    {% endif %}
+  </div>
+  <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+  <a href="{{ url_for('ver_time', time_id=time.id) }}" class="btn btn-secondary">Cancelar</a>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const pagouCheckbox = document.getElementById('pagou');
+    const pagouLabel = document.getElementById('pagou-label');
+    const comprovanteUploadDiv = document.getElementById('comprovante-upload');
+
+    function updatePaymentStatusDisplay() {
+      if (pagouCheckbox.checked) {
+        pagouLabel.textContent = 'Pagamento Confirmado. Comprovante anexado (se houver).';
+        pagouLabel.style.color = 'green';
+        pagouLabel.style.fontWeight = 'bold';
+        comprovanteUploadDiv.style.display = 'block';
+      } else {
+        pagouLabel.textContent = 'Já fez o pagamento? Se sim, selecione aqui e anexe o comprovante.';
+        pagouLabel.style.color = 'red';
+        pagouLabel.style.fontWeight = 'bold';
+        comprovanteUploadDiv.style.display = 'none';
+      }
+    }
+
+    pagouCheckbox.addEventListener('change', updatePaymentStatusDisplay);
+
+    updatePaymentStatusDisplay();
+
+    let blinkInterval;
+
+    function startBlinking() {
+      if (!pagouCheckbox.checked) {
+        blinkInterval = setInterval(function() {
+          pagouLabel.style.opacity = (pagouLabel.style.opacity === '0.5') ? '1' : '0.5';
+        }, 800);
+      }
+    }
+
+    function stopBlinking() {
+      clearInterval(blinkInterval);
+      pagouLabel.style.opacity = '1';
+    }
+
+    pagouCheckbox.addEventListener('change', function() {
+      if (this.checked) {
+        stopBlinking();
+      } else {
+        startBlinking();
+      }
+    });
+
+    if (!pagouCheckbox.checked) {
+        startBlinking();
+    }
+  });
+</script>
+{% endblock %}

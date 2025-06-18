@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% block title %}Painel Master{% endblock %}
+
+{% block content %}
+<h2 class="titulo-pagina">Painel Master</h2>
+<p>Aqui você pode gerenciar as configurações globais e por time, gerar relatórios e controlar o chaveamento.</p>
+<hr>
+
+<div class="card mb-4">
+    <div class="card-header fw-bold">
+        Ações Principais do Torneio
+    </div>
+    <div class="card-body">
+        <div class="d-flex justify-content-start align-items-center gap-2 flex-wrap">
+
+            <form action="{{ url_for('toggle_cadastros_globais') }}" method="POST" class="d-inline mb-0">
+                {% if config.cadastros_globais_encerrados %}
+                    <button type="submit" class="btn btn-primary" onclick="return confirm('Isso irá desbloquear os cadastros, permitindo edições. Deseja continuar?')">Editar Cadastros</button>
+                {% else %}
+                    <button type="submit" class="btn btn-danger" onclick="return confirm('Isso irá BLOQUEAR os cadastros e edições para TODOS os times. Deseja continuar?')">Bloquear Cadastros</button>
+                {% endif %}
+            </form>
+
+            {% if quadras_configuradas %}
+                <form action="{{ url_for('gerar_e_salvar_chaveamento') }}" method="POST" class="d-inline mb-0">
+                    {% if torneio_gerado %}
+                        <button type="submit" class="btn btn-danger" onclick="return confirm('Isso irá apagar e RECRIAR todo o torneio. Tem certeza?');">Recriar Torneio</button>
+                    {% else %}
+                        <button type="submit" class="btn btn-primary">Gerar Torneio</button>
+                    {% endif %}
+                </form>
+            {% else %}
+                <span class="d-inline-block" tabindex="0" data-bs-toggle="tooltip" title="Você precisa salvar a configuração de quadras primeiro.">
+                    <button type="button" class="btn btn-primary" disabled>Gerar Torneio</button>
+                </span>
+            {% endif %}
+
+            <a href="{{ url_for('ver_chaveamento_admin') }}" class="btn btn-primary">Visualizar/Editar Placares</a>
+
+            <div class="btn-group">
+                <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                    Ver Grupos (Admin)
+                </button>
+                <ul class="dropdown-menu">
+                    <li><a class="dropdown-item" href="{{ url_for('visualizar_grupos', modalidade='Futebol Masculino') }}">Futebol Masculino</a></li>
+                    <li><a class="dropdown-item" href="{{ url_for('visualizar_grupos', modalidade='Futebol Feminino') }}">Futebol Feminino</a></li>
+                    <li><a class="dropdown-item" href="{{ url_for('visualizar_grupos', modalidade='Vôlei Misto') }}">Vôlei Misto</a></li>
+                </ul>
+            </div>
+
+            <a href="{{ url_for('portal') }}" class="btn btn-outline-secondary" target="_blank">Ver Portal Público</a>
+
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        Configuração de Quadras
+    </div>
+    <div class="card-body">
+        <form action="{{ url_for('config_quadras') }}" method="POST">
+            <div class="row g-3 align-items-center">
+                <div class="col-auto">
+                    <label for="num_quadras_fut_masc" class="col-form-label">Quadras Fut. Masculino:</label>
+                </div>
+                <div class="col-auto">
+                    <input type="number" id="num_quadras_fut_masc" name="num_quadras_fut_masc" class="form-control" value="{{ config.num_quadras_fut_masc or 0 }}" min="0">
+                </div>
+                <div class="col-auto">
+                    <label for="num_quadras_fut_fem" class="col-form-label">Quadras Fut. Feminino:</label>
+                </div>
+                <div class="col-auto">
+                    <input type="number" id="num_quadras_fut_fem" name="num_quadras_fut_fem" class="form-control" value="{{ config.num_quadras_fut_fem or 0 }}" min="0">
+                </div>
+                <div class="col-auto">
+                    <label for="num_quadras_volei_misto" class="col-form-label">Quadras Vôlei Misto:</label>
+                </div>
+                <div class="col-auto">
+                    <input type="number" id="num_quadras_volei_misto" name="num_quadras_volei_misto" class="form-control" value="{{ config.num_quadras_volei_misto or 0 }}" min="0">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-success">Salvar Configurações</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        Gerenciamento de Times Individuais
+    </div>
+    <div class="card-body">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th>Nome da Igreja/Time</th>
+                    <th>Modalidade</th>
+                    <th>Pagamento</th>
+                    <th>Cadastros Encerrados?</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for time in times %}
+                <tr>
+                    <td>{{ time.nome_igreja }}</td>
+                    <td>{{ time.modalidade }}</td>
+                    <td><span class="badge bg-{{'success' if time.pagou else 'danger'}}">{{ 'Pago' if time.pagou else 'Pendente' }}</span></td>
+                    <td><span class="badge bg-{{'secondary' if time.cadastros_encerrados else 'primary'}}">{{ 'Sim' if time.cadastros_encerrados else 'Não' }}</span></td>
+                    <td>
+                        <a href="{{ url_for('admin_config_time', time_id=time.id) }}" class="btn btn-sm btn-outline-primary">Configurar Time</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="text-center">Nenhum time cadastrado ainda.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer text-center">
+        <a href="{{ url_for('relatorio_excel') }}" class="btn btn-secondary">Gerar Relatório Completo em Excel</a>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Inicializa os tooltips do Bootstrap (para o botão desabilitado)
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl)
+    })
+</script>
+{% endblock %}

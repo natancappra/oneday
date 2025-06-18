@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block title %}Editar Jogador - {{ jogador.nome_completo }}{% endblock %}
+{% block content %}
+<h2>Editar Jogador: {{ jogador.nome_completo }}</h2>
+<form method="POST" enctype="multipart/form-data" novalidate>
+  <div class="mb-3">
+    <label for="foto" class="form-label">Foto do Jogador</label>
+    {% if jogador.foto %}
+      <div><img src="{{ url_for('static', filename='uploads/' + jogador.foto) }}" alt="Foto" width="120"></div>
+    {% endif %}
+    <input class="form-control" type="file" id="foto" name="foto" accept="image/*" />
+  </div>
+  <div class="mb-3">
+    <label for="nome_completo" class="form-label">Nome Completo</label>
+    <input type="text" class="form-control" id="nome_completo" name="nome_completo" value="{{ jogador.nome_completo }}" required />
+  </div>
+  <div class="mb-3">
+    <label for="cpf" class="form-label">CPF</label>
+    <input type="text" class="form-control" id="cpf" name="cpf" value="{{ jogador.cpf if jogador.cpf else '' }}" />
+  </div>
+  <div class="mb-3">
+    <label for="rg" class="form-label">RG</label>
+    <input type="text" class="form-control" id="rg" name="rg" value="{{ jogador.rg if jogador.rg else '' }}" />
+  </div>
+  <div class="mb-3">
+    <label for="data_nascimento" class="form-label">Data de Nascimento</label>
+    <input type="date" class="form-control" id="data_nascimento" name="data_nascimento" value="{{ jogador.data_nascimento.strftime('%Y-%m-%d') if jogador.data_nascimento else '' }}" />
+  </div>
+  <div class="mb-3 form-check">
+    <input type="checkbox" class="form-check-input" id="is_adventista" name="is_adventista" {% if jogador.is_adventista %}checked{% endif %} />
+    <label class="form-check-label" for="is_adventista">É Adventista?</label>
+  </div>
+  <div class="mb-3">
+    <label for="foto_identidade" class="form-label">Foto da Identidade</label>
+    {% if jogador.foto_identidade %}
+      <div><a href="{{ url_for('static', filename='uploads/' + jogador.foto_identidade) }}" target="_blank"><img src="{{ url_for('static', filename='uploads/' + jogador.foto_identidade) }}" alt="Foto ID" width="120"></a></div>
+    {% endif %}
+    <input class="form-control" type="file" id="foto_identidade" name="foto_identidade" accept="image/*" />
+  </div>
+  <div class="mb-3 form-check">
+    <input type="checkbox" class="form-check-input" id="is_capitao" name="is_capitao" {% if jogador.is_capitao %}checked{% endif %} />
+    <label class="form-check-label" for="is_capitao">É Capitão?</label>
+  </div>
+  <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+  <a href="{{ url_for('ver_time', time_id=jogador.time_id) }}" class="btn btn-secondary">Cancelar</a>
+</form>
+{% endblock %}

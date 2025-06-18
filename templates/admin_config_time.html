@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Configurar Time - {{ time.nome_igreja }}{% endblock %}
+{% block content %}
+<h2>Configurar Time: {{ time.nome_igreja }}</h2>
+
+<form method="POST" novalidate>
+    <div class="mb-3 form-check">
+        <input type="checkbox" class="form-check-input" id="cadastros_encerrados" name="cadastros_encerrados" {% if time.cadastros_encerrados %}checked{% endif %} />
+        <label class="form-check-label" for="cadastros_encerrados">Encerrar Cadastros e Edições para este Time</label>
+    </div>
+    <div class="mb-3">
+        <label for="limite_nao_adventistas" class="form-label">Limite de Jogadores Não Adventistas</label>
+        <input type="number" class="form-control" id="limite_nao_adventistas" name="limite_nao_adventistas" value="{{ time.limite_nao_adventistas }}" min="0" />
+        <small class="form-text text-muted">Defina 0 para não permitir nenhum jogador não adventista.</small>
+    </div>
+    <button type="submit" class="btn btn-primary">Salvar Configurações</button>
+    <a href="{{ url_for('admin_master') }}" class="btn btn-secondary">Voltoar</a>
+</form>
+
+{% endblock %}

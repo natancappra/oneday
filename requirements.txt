@@ -1,0 +1,8 @@
+flask
+flask-login
+flask-sqlalchemy
+flask-admin
+flask-migrate
+pandas
+xlsxwriter
+Pillow

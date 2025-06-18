@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Portal do Campeonato{% endblock %}
+
+{% block content %}
+<div class="text-center mb-5">
+    <h2 class="titulo-pagina">Portal do Campeonato</h2>
+    <p class="lead">Selecione uma modalidade abaixo para ver os grupos, jogos e classificações.</p>
+</div>
+
+<div class="row justify-content-center g-4">
+
+    {% if modalidades %}
+        {% for modalidade in modalidades %}
+        <div class="col-md-6 col-lg-4">
+            <a href="{{ url_for('visualizar_grupos', modalidade=modalidade) }}" class="text-decoration-none">
+                <div class="card h-100 shadow-sm card-hover">
+                    <div class="card-body text-center p-4">
+                        <h4 class="card-title mb-0">{{ modalidade }}</h4>
+                    </div>
+                </div>
+            </a>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-info text-center" role="alert">
+                Nenhum torneio foi gerado ainda. Por favor, volte mais tarde!
+            </div>
+        </div>
+    {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .card-hover {
+        transition: transform .2s ease-in-out, box-shadow .2s ease-in-out;
+    }
+    .card-hover:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+    }
+</style>
+{% endblock %}

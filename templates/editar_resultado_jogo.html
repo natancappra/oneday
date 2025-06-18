@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+{% block title %}Editar Jogo{% endblock %}
+
+{% block content %}
+<h2 class="titulo-pagina">Editar Jogo: {{ game.time_a.nome_igreja if game.time_a else 'A definir' }} vs {{
+    game.time_b.nome_igreja if game.time_b else 'A definir' }}</h2>
+
+<form method="POST" novalidate>
+    <div class="row">
+        <div class="col-md-6">
+            <h4>Detalhes da Partida</h4>
+            <div class="mb-3">
+                <label for="horario" class="form-label">Horário do Jogo</label>
+                <input type="time" class="form-control" id="horario" name="horario"
+                       value="{{ game.data_hora.strftime('%H:%M') if game.data_hora else '' }}">
+                <div class="form-text">A data do jogo é definida pelo sistema. Aqui você ajusta apenas o horário.</div>
+            </div>
+            <div class="mb-3">
+                <strong>Local / Quadra:</strong>
+                <p class="form-control-plaintext">{{ game.local if game.local else 'A definir pelo sistema' }}</p>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <h4>Resultado</h4>
+
+            {# --- BLOCO CORRIGIDO PARA FUTEBOL (MASCULINO E FEMININO) --- #}
+            {% if 'Futebol' in game.modalidade %}
+            <div class="mb-3">
+                <label for="gols_time_a" class="form-label">Gols <strong>{{ game.time_a.nome_igreja if game.time_a else
+                    'A definir' }}</strong></label>
+                <input type="number" class="form-control" id="gols_time_a" name="gols_time_a"
+                       value="{{ game.gols_time_a if game.gols_time_a is not none else '' }}" min="0">
+            </div>
+            <div class="mb-3">
+                <label for="gols_time_b" class="form-label">Gols <strong>{{ game.time_b.nome_igreja if game.time_b else
+                    'A definir' }}</strong></label>
+                <input type="number" class="form-control" id="gols_time_b" name="gols_time_b"
+                       value="{{ game.gols_time_b if game.gols_time_b is not none else '' }}" min="0">
+            </div>
+
+            {# --- BLOCO CORRIGIDO PARA VÔLEI MISTO --- #}
+            {% elif game.modalidade == 'Vôlei Misto' %}
+            <div class="mb-3">
+                <label for="sets_vencidos_a" class="form-label">Sets Vencidos <strong>{{ game.time_a.nome_igreja if
+                    game.time_a else 'A definir' }}</strong></label>
+                <input type="number" class="form-control" id="sets_vencidos_a" name="sets_vencidos_a"
+                       value="{{ game.sets_vencidos_a if game.sets_vencidos_a is not none else '' }}" min="0" max="3">
+            </div>
+            <div class="mb-3">
+                <label for="sets_vencidos_b" class="form-label">Sets Vencidos <strong>{{ game.time_b.nome_igreja if
+                    game.time_b else 'A definir' }}</strong></label>
+                <input type="number" class="form-control" id="sets_vencidos_b" name="sets_vencidos_b"
+                       value="{{ game.sets_vencidos_b if game.sets_vencidos_b is not none else '' }}" min="0" max="3">
+            </div>
+            <div class="mb-3">
+                <label for="pontos_sets" class="form-label">Pontuação Detalhada dos Sets (formato JSON)</label>
+                <textarea class="form-control" id="pontos_sets" name="pontos_sets" rows="3">{{ game.pontos_sets or '[]' }}</textarea>
+                <small class="form-text text-muted">Exemplo: [["25-20"], ["25-18"], ["21-25"]]</small>
+            </div>
+
+            {% endif %}
+        </div>
+    </div>
+
+    <hr>
+
+    <div class="mt-3">
+        <button type="submit" name="action" value="salvar" class="btn btn-primary">Salvar Alterações</button>
+        <button type="submit" name="action" value="finalizar" class="btn btn-danger"
+                onclick="return confirm('Tem certeza que deseja FINALIZAR este jogo? O vencedor será definido e avançará no chaveamento.')">
+            Finalizar Jogo e Definir Vencedor
+        </button>
+        <a href="{{ url_for('admin_master') }}" class="btn btn-sm btn-secondary">Voltar ao Painel Master</a>
+    </div>
+</form>
+{% endblock %}
+
+
+{% block scripts %}
+{# Necessário para o filtro from_json que está sendo usado no formulário de Vôlei #}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/json3/3.3.2/json3.min.js"></script>
+<script>
+    // Este script é apenas para garantir que o filtro 'from_json' funcione
+    // dentro do 'value' do input de sets do vôlei.
+    if (typeof (JSON3) !== 'undefined') {
+        let jinjaEnv = (function() {
+            try { return window.jinjaEnv; } catch(e) { return undefined; }
+        })();
+
+        if (jinjaEnv) {
+            jinjaEnv.addFilter('from_json', function(value) {
+                if (!value) return null;
+                try {
+                    return JSON3.parse(value);
+                } catch (e) {
+                    return null;
+                }
+            });
+        }
+    }
+</script>
+{% endblock %}

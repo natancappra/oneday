@@ -1,0 +1,116 @@
+{% extends 'base.html' %}
+
+{% block title %}Cadastrar Time{% endblock %}
+
+{% block content %}
+<h2 class="titulo-pagina">Cadastrar Time</h2>
+<form method="POST" enctype="multipart/form-data" novalidate>
+    <div class="mb-3">
+        <label for="nome_igreja" class="form-label">Nome da Igreja</label>
+        <input type="text" class="form-control" id="nome_igreja" name="nome_igreja" required/>
+    </div>
+    <div class="mb-3">
+        <label for="diretor_jovem" class="form-label">Nome do Diretor Jovem</label>
+        <input type="text" class="form-control" id="diretor_jovem" name="diretor_jovem" required/>
+    </div>
+    <div class="mb-3">
+        <label for="distrito" class="form-label">Distrito</label>
+        <input type="text" class="form-control" id="distrito" name="distrito" required/>
+    </div>
+    <div class="mb-3">
+        <label for="regiao" class="form-label">Região</label>
+        <select class="form-control" id="regiao" name="regiao" required>
+            <option value="">Selecione a Região</option>
+            {% for opcao in regiao_opcoes %}
+            <option value="{{ opcao }}">{{ opcao }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label for="nome_base" class="form-label">Nome da Base</label>
+        <input type="text" class="form-control" id="nome_base" name="nome_base" required/>
+        <div class="mb-3">
+            <label for="modalidade" class="form-label">Modalidade</label>
+            <select class="form-control" id="modalidade" name="modalidade" required>
+                <option value="">Selecione a modalidade</option>
+                <option value="Futebol Masculino">Futebol Masculino</option>
+                <option value="Futebol Feminino">Futebol Feminino</option>
+                <option value="Vôlei Misto">Vôlei Misto</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="imagem" class="form-label">Imagem do Time</label>
+            <input type="file" class="form-control" id="imagem" name="imagem" accept="image/*"/>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Link de Pagamento</label>
+            <p><a href="{{ LINK_PAGAMENTO_PADRAO }}" target="_blank">{{ LINK_PAGAMENTO_PADRAO }}</a></p>
+        </div>
+        <div class="mb-3 form-check d-flex align-items-center">
+            <input type="checkbox" class="form-check-input me-2" id="pagou" name="pagou"/>
+            <label class="form-check-label" for="pagou" id="pagou-label">Já fez o pagamento? Se sim, selecione aqui e
+                anexe o comprovante.</label>
+        </div>
+        <div class="mb-3" id="comprovante-upload">
+            <label for="comprovante_pagamento" class="form-label">Anexar Comprovante de Pagamento (Imagem/PDF)</label>
+            <input type="file" class="form-control" id="comprovante_pagamento" name="comprovante_pagamento"
+                   accept="image/*, application/pdf"/>
+        </div>
+        <button type="submit" class="btn btn-primary">Cadastrar</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const pagouCheckbox = document.getElementById('pagou');
+      const pagouLabel = document.getElementById('pagou-label');
+      const comprovanteUploadDiv = document.getElementById('comprovante-upload');
+
+      function updatePaymentStatusDisplay() {
+        if (pagouCheckbox.checked) {
+          pagouLabel.textContent = 'Pagamento Confirmado. Comprovante anexado (se houver).';
+          pagouLabel.style.color = 'green';
+          pagouLabel.style.fontWeight = 'bold';
+          comprovanteUploadDiv.style.display = 'block';
+        } else {
+          pagouLabel.textContent = 'Já fez o pagamento? Se sim, selecione aqui e anexe o comprovante.';
+          pagouLabel.style.color = 'red';
+          pagouLabel.style.fontWeight = 'bold';
+          comprovanteUploadDiv.style.display = 'none';
+        }
+      }
+
+      pagouCheckbox.addEventListener('change', updatePaymentStatusDisplay);
+
+      updatePaymentStatusDisplay();
+
+      let blinkInterval;
+
+      function startBlinking() {
+        if (!pagouCheckbox.checked) {
+          blinkInterval = setInterval(function() {
+            pagouLabel.style.opacity = (pagouLabel.style.opacity === '0.5') ? '1' : '0.5';
+          }, 800);
+        }
+      }
+
+      function stopBlinking() {
+        clearInterval(blinkInterval);
+        pagouLabel.style.opacity = '1';
+      }
+
+      pagouCheckbox.addEventListener('change', function() {
+        if (this.checked) {
+          stopBlinking();
+        } else {
+          startBlinking();
+        }
+      });
+
+      if (!pagouCheckbox.checked) {
+          startBlinking();
+      }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}Lista de Times{% endblock %}
+{% block content %}
+<h2 class="titulo-pagina">Lista de Times</h2>
+
+{% if perfil == 'lider' %}
+  <a href="{{ url_for('cadastro_igreja') }}" class="btn btn-success mb-3">Criar Time</a>
+{% endif %}
+
+{% if times %}
+  <table class="table table-striped">
+  <thead>
+  <tr>
+    <th>Imagem</th>
+    <th>Nome da Igreja</th>
+    <th>Diretor Jovem</th>
+    <th>Distrito</th>
+    <th>Região</th>
+    <th>Nome da Base</th>
+    <th>Modalidade</th>
+    <th>Pagou</th>
+    <th>Comprovante</th>
+    <th>Cadastros Encerrados?</th>
+    <th>Ações</th>
+  </tr>
+</thead>
+<tbody>
+  {% for time in times %}
+  <tr>
+    <td>
+      {% if time.imagem %}
+        <img src="{{ url_for('static', filename='uploads/' ~ time.imagem) }}" alt="Imagem do Time" style="max-height:50px;">
+      {% else %}
+        Sem imagem
+      {% endif %}
+    </td>
+    <td>{{ time.nome_igreja }}</td>
+    <td>{{ time.diretor_jovem if time.diretor_jovem else 'N/A' }}</td>
+    <td>{{ time.distrito }}</td>
+    <td>{{ time.regiao }}</td>
+    <td>{{ time.nome_base }}</td>
+    <td>{{ time.modalidade }}</td>
+    <td>
+      {% if time.pagou %}
+        <span class="badge bg-success">Sim</span>
+      {% else %}
+        <span class="badge bg-danger">Não</span>
+      {% endif %}
+    </td>
+    <td>
+      {% if time.comprovante_pagamento %}
+        <a href="{{ url_for('static', filename='uploads/' ~ time.comprovante_pagamento) }}" target="_blank">Ver</a>
+      {% else %}
+        N/A
+      {% endif %}
+    </td>
+    <td>{{ 'Sim' if time.cadastros_encerrados else 'Não' }}</td>
+    <td>
+      <a href="{{ url_for('ver_time', time_id=time.id) }}" class="btn btn-sm btn-info">Ver</a>
+      {% if perfil == 'admin' or (perfil == 'lider' and time.lider_id == current_user.id and time.data_limite_edicao > now and not time.cadastros_encerrados) %}
+      <a href="{{ url_for('editar_time', token=time.token) }}" class="btn btn-sm btn-warning">Editar</a>
+      {% endif %}
+      {% if perfil == 'admin' %}
+      <form action="{{ url_for('excluir_time', time_id=time.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Confirma exclusão do time e de todos os jogadores?');">
+        <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+      </form>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+  </table>
+{% else %}
+  <p>Nenhum time cadastrado.</p>
+{% endif %}
+{% endblock %}
