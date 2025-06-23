@@ -862,50 +862,58 @@ def excluir_jogador(jogador_id):
     flash('Jogador excluído com sucesso.', 'success')
     return redirect(url_for('ver_time', time_id=time.id))
 
-
 @app.route('/excluir_time/<int:time_id>', methods=['POST'])
 @login_required
 def excluir_time(time_id):
     time = Time.query.get_or_404(time_id)
+
+    # Esta é a VERIFICAÇÃO DE PERMISSÃO.
+    # Se o usuário NÃO É admin E NÃO É o líder do time, ele ABORTA com 403.
+    # Caso contrário, o código continua.
     if not current_user.is_admin and time.lider_id != current_user.id:
         abort(403)
 
-        # Apaga a imagem/logo do time do Cloudinary
-        if time.imagem:
-            public_id = get_public_id_from_url(time.imagem)
+    # TODO O CÓDIGO ABAIXO DEVE ESTAR AQUI (com este recuo),
+    # ou seja, 4 espaços à direita do 'def', não 8 ou mais.
+
+    # Apaga a imagem/logo do time do Cloudinary
+    if time.imagem:
+        public_id = get_public_id_from_url(time.imagem)
+        if public_id:
+            cloudinary.uploader.destroy(public_id)
+            log_auditoria(f"Excluiu do Cloudinary (logo time): {public_id}")
+
+    # Apaga o comprovante de pagamento do Cloudinary
+    if time.comprovante_pagamento:
+        public_id = get_public_id_from_url(time.comprovante_pagante)
+        if public_id:
+            cloudinary.uploader.destroy(public_id)
+            log_auditoria(f"Excluiu do Cloudinary (comprovante): {public_id}")
+
+    # Itera sobre todos os jogadores do time e apaga suas imagens também
+    for jogador in time.jogadores:
+        if jogador.foto:
+            public_id = get_public_id_from_url(jogador.foto)
             if public_id:
                 cloudinary.uploader.destroy(public_id)
-                log_auditoria(f"Excluiu do Cloudinary (logo time): {public_id}")
+                log_auditoria(f"Excluiu do Cloudinary (foto jogador): {public_id}")
 
-        # Apaga o comprovante de pagamento do Cloudinary
-        if time.comprovante_pagamento:
-            public_id = get_public_id_from_url(time.comprovante_pagamento)
+        if jogador.foto_identidade:
+            public_id = get_public_id_from_url(jogador.foto_identidade)
             if public_id:
                 cloudinary.uploader.destroy(public_id)
-                log_auditoria(f"Excluiu do Cloudinary (comprovante): {public_id}")
+                log_auditoria(f"Excluiu do Cloudinary (identidade): {public_id}")
 
-        # Itera sobre todos os jogadores do time e apaga suas imagens também
-        for jogador in time.jogadores:
-            if jogador.foto:
-                public_id = get_public_id_from_url(jogador.foto)
-                if public_id:
-                    cloudinary.uploader.destroy(public_id)
-                    log_auditoria(f"Excluiu do Cloudinary (foto jogador): {public_id}")
-
-            if jogador.foto_identidade:
-                public_id = get_public_id_from_url(jogador.foto_identidade)
-                if public_id:
-                    cloudinary.uploader.destroy(public_id)
-                    log_auditoria(f"Excluiu do Cloudinary (identidade): {public_id}")
-
+    # Deleta os jogos associados ao time
     Game.query.filter(
         (Game.time_a_id == time.id) |
         (Game.time_b_id == time.id) |
         (Game.vencedor_id == time.id)
     ).delete(synchronize_session=False)
 
+    # Deleta o próprio time
     db.session.delete(time)
-    db.session.commit()
+    db.session.commit() # Salva todas as alterações no banco de dados
     log_admin_action(f"Excluiu time: '{time.nome_igreja}' (ID: {time.id})")
     flash('Time excluído com sucesso.', 'success')
     return redirect(url_for('index'))

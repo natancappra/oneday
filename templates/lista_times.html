@@ -57,6 +57,13 @@
                 </td>
                 <td>
                     <a href="{{ url_for('ver_time', time_id=time.id) }}" class="btn btn-sm btn-outline-primary">Ver / Gerenciar</a>
+                    {# --- NOVA LÓGICA: BOTÃO EXCLUIR APENAS PARA ADMIN --- #}
+                    {% if current_user.is_admin %}
+                        <form action="{{ url_for('excluir_time', time_id=time.id) }}" method="post" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir este time e TODOS os seus jogadores? Esta ação é irreversível!');">
+                            <button type="submit" class="btn btn-sm btn-danger ms-1">Excluir</button>
+                        </form>
+                    {% endif %}
+                    {# --- FIM DA NOVA LÓGICA --- #}
                 </td>
             </tr>
             {% endfor %}
@@ -64,7 +71,5 @@
         </table>
     </div>
 {% endif %}
-
-{# --- FIM DA LÓGICA INTELIGENTE --- #}
 
 {% endblock %}
