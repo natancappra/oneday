@@ -1,15 +1,12 @@
-# create_admin.py
 import os
-import csv
 import secrets
 import string
 from app import app, db
 from models import User
 
-
-def generate_random_password(length=8):  # Senha de 8 caracteres
+def generate_random_password(length=8):
     """Gera uma senha aleatória com letras minúsculas e dígitos."""
-    characters = string.ascii_lowercase + string.digits  # Apenas minúsculas e dígitos
+    characters = string.ascii_lowercase + string.digits
     password = ''.join(secrets.choice(characters) for i in range(length))
     return password
 
@@ -17,56 +14,59 @@ def generate_random_password(length=8):  # Senha de 8 caracteres
 def create_multiple_admins():
     with app.app_context():
         admin_users_info = [
-            {'name': 'Natan', 'email_prefix': 'natan'},
-            {'name': 'Daniel', 'email_prefix': 'daniel'},
-            {'name': 'Roberta', 'email_prefix': 'roberta'},
-            {'name': 'Maycon', 'email_prefix': 'maycon'},
-            {'name': 'Sonia', 'email_prefix': 'sonia'},
-            {'name': 'Matheus', 'email_prefix': 'matheus'},
-            {'name': 'Regis', 'email_prefix': 'regis'},
-            {'name': 'Jeferson', 'email_prefix': 'jeferson'},
-            {'name': 'Giliard', 'email_prefix': 'giliard'},
-            {'name': 'Estefany', 'email_prefix': 'estefany'},
+            # Seus usuários personalizados
+            {'name': 'Natan', 'email': 'natan.cappra@gmail.com'},
+            {'name': 'Giliard', 'email': 'giliard.ferreira@adventistas.org'},
+            {'name': 'Estefany', 'email': 'sttefany.rukhaber@adventistas.org'},
+            {'name': 'Elias', 'email': 'eliasbueno.adv@gmail.com'},
+            {'name': 'Daniel', 'email': 'daniel.dm99282946@gmail.com'},
+            {'name': 'Roberta', 'email': 'roberta@oneday.com'},
+            {'name': 'Maycon', 'email': 'maycon@oneday.com'},
+            {'name': 'Sonia', 'email': 'sonia@oneday.com'},
+            {'name': 'Matheus', 'email': 'matheus@oneday.com'},
+            {'name': 'Regis', 'email': 'regis@oneday.com'},
+            {'name': 'Jeferson', 'email': 'jeferson@oneday.com'},
         ]
 
-        # Adicionar admins genéricos (adm1 a adm15)
+        # --- CORREÇÃO APLICADA AQUI ---
+        # Adiciona admins genéricos com a estrutura PADRONIZADA
         for i in range(1, 16):
-            admin_users_info.append({'name': f'adm{i}', 'email_prefix': f'adm{i}'})
+            admin_users_info.append({'name': f'adm{i}', 'email': f'adm{i}@oneday.com'})
 
-        # O admin principal e de teste podem ser mantidos para fácil acesso
-        admin_users_info.append({'name': 'AdminMaster', 'email_prefix': 'adminmaster'})
-        admin_users_info.append({'name': 'TestUser', 'email_prefix': 'testuser'})
+        admin_users_info.append({'name': 'AdminMaster', 'email': 'adminmaster@oneday.com'})
+        admin_users_info.append({'name': 'TestUser', 'email': 'testuser@oneday.com'})
 
-        output_file_name = 'admin_logins.csv'
-        output_file_path = os.path.join(os.path.dirname(__file__), output_file_name)
-
+        logins_para_salvar = []
         print("Iniciando criação/verificação de usuários administradores e salvando em arquivo...")
 
-        with open(output_file_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
-            csvfile.write('sep=,\n')  # Linha que informa o delimitador ao Excel
+        # O loop agora funciona para todos, pois todos têm a chave 'email'
+        for user_data in admin_users_info:
+            username = user_data['name']
+            email = user_data['email']
 
-            fieldnames = ['Nome de Usuário (Login)', 'Email', 'Senha']
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            password = generate_random_password(length=8)
 
-            writer.writeheader()
+            user_exists = User.query.filter_by(username=username).first()
+            if not user_exists:
+                admin_user = User(username=username, email=email, is_admin=True)
+                admin_user.set_password(password)
+                db.session.add(admin_user)
+                db.session.commit()
+                print(f'Usuário admin "{username}" criado com sucesso.')
 
-            for user_data in admin_users_info:
-                username = user_data['name']
-                email = f"{user_data['email_prefix']}@oneday.com"
+            logins_para_salvar.append({'username': username, 'email': email, 'password': password})
 
-                password = generate_random_password(length=8)
+        # O resto da sua função para salvar o .txt continua igual e correta
+        output_file_name = 'admin_logins.txt'
+        output_file_path = os.path.join(os.path.dirname(__file__), output_file_name)
 
-                user_exists = User.query.filter_by(username=username).first()
-                if user_exists:
-                    print(f'Usuário admin "{username}" já existe. Pulando criação.')
-                else:
-                    admin_user = User(username=username, email=email, is_admin=True)
-                    admin_user.set_password(password)
-                    db.session.add(admin_user)
-                    db.session.commit()
-                    print(f'Usuário admin "{username}" criado com sucesso. Email: {email} Senha: {password}')
-
-                writer.writerow({'Nome de Usuário (Login)': username, 'Email': email, 'Senha': password})
+        with open(output_file_path, 'w', encoding='utf-8') as file:
+            file.write("--- Logins e Senhas dos Administradores ---\n\n")
+            for login_info in logins_para_salvar:
+                file.write(f"Username: {login_info['username']}\n")
+                file.write(f"Email:    {login_info['email']}\n")
+                file.write(f"Password: {login_info['password']}\n")
+                file.write("----------------------------------------\n")
 
         print(f"\nCriação/verificação de administradores concluída.")
         print(f"Logins salvos em: {output_file_path}")

@@ -270,3 +270,54 @@ h2 {
     font-weight: 600;
     margin-top: 0.5rem;
 }
+/* static/css/style.css */
+
+/* --- NOVOS ESTILOS PARA IMAGENS --- */
+
+/* Para imagens bem pequenas, em tabelas */
+.img-thumbnail-tabela {
+    width: 40px;
+    height: 40px;
+    object-fit: cover; /* Garante que a imagem preencha o espaço sem distorcer */
+    border-radius: 50%; /* Deixa a imagem redonda */
+    border: 2px solid #eee;
+}
+
+/* Para pré-visualização em páginas de detalhes e edição */
+/* Esta será a "moldura" da imagem */
+.img-preview-container {
+    max-width: 100px;
+    height: auto;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    padding: 0; /* Remove preenchimento interno */
+    overflow: hidden; /* Garante que a imagem não vaze */
+}
+
+/* Esta é a imagem em si, sem bordas arredondadas */
+.img-preview-pagina {
+    max-width: 100%; /* Imagem ocupa 100% da largura da moldura */
+    height: auto;
+    display: block; /* Garante que não haja espaços estranhos */
+}
+}
+/* Estilo para imagens pequenas em tabelas */
+.img-thumbnail-tabela {
+    width: 45px;
+    height: 45px;
+    object-fit: cover;
+    border-radius: 50%;
+    border: 2px solid #dee2e6;
+}
+
+/* Estilo para pré-visualização de logos em formulários de edição */
+.img-preview-form {
+    width: 150px;
+    height: 150px;
+    object-fit: cover;      /* Garante que a imagem preencha o espaço sem distorcer */
+    border-radius: 50%;     /* É o que deixa a imagem perfeitamente redonda */
+    border: 3px solid #dee2e6;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    margin-bottom: 1rem;    /* Adiciona um espaço embaixo */
+}

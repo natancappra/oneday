@@ -2,7 +2,7 @@
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 import uuid
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 
 from extensions import db
 
@@ -33,20 +33,21 @@ class Time(db.Model):
     nome_base = db.Column(db.String(100))
     modalidade = db.Column(db.String(50), nullable=False)
     token = db.Column(db.String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    data_limite_edicao = db.Column(db.DateTime, nullable=False, default=lambda: datetime.utcnow() + timedelta(days=7))
     lider_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     jogadores = db.relationship('Jogador', backref='time', cascade='all, delete-orphan')
 
-    imagem = db.Column(db.String(200), nullable=True)
+    imagem = db.Column(db.String(255), nullable=True)
     link_pagamento = db.Column(db.String(200), nullable=True)
     pagou = db.Column(db.Boolean, default=False)
-    comprovante_pagamento = db.Column(db.String(200), nullable=True)
+    comprovante_pagamento = db.Column(db.String(255), nullable=True)
 
     diretor_jovem = db.Column(db.String(150), nullable=True)
 
     cadastros_encerrados = db.Column(db.Boolean, default=False)
     chaveamento_json = db.Column(db.Text, nullable=True)
-    limite_nao_adventistas = db.Column(db.Integer, default=0)
+    limite_nao_adv_fut_masc = db.Column(db.Integer, default=1)
+    limite_nao_adv_fut_fem = db.Column(db.Integer, default=2)
+    limite_nao_adv_volei_misto = db.Column(db.Integer, default=1)
     grupo_id = db.Column(db.Integer, db.ForeignKey('grupo.id'), nullable=True)
     classificacao = db.relationship('Classificacao', backref='time', uselist=False, cascade='all, delete-orphan')
 
@@ -57,7 +58,8 @@ class Time(db.Model):
 
 class Jogador(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    foto = db.Column(db.String(200), nullable=True)
+    foto = db.Column(db.String(255), nullable=True)
+    telefone = db.Column(db.String(20), nullable=False)
     nome_completo = db.Column(db.String(150), nullable=False)
     cpf = db.Column(db.String(20), nullable=True)
     rg = db.Column(db.String(20), nullable=True)
@@ -65,8 +67,9 @@ class Jogador(db.Model):
     time_id = db.Column(db.Integer, db.ForeignKey('time.id'), nullable=False)
 
     is_adventista = db.Column(db.Boolean, default=True)
-    foto_identidade = db.Column(db.String(200), nullable=True)
+    foto_identidade = db.Column(db.String(255), nullable=True)
     is_capitao = db.Column(db.Boolean, default=False)
+
 
     def __repr__(self):
         return f"<Jogador {self.nome_completo} ({self.time.nome_igreja})>"

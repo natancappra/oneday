@@ -62,7 +62,6 @@ db.sqlite3
 db.sqlite3-journal
 
 # Flask stuff:
-instance/
 .webassets-cache
 
 # Scrapy stuff:
@@ -131,7 +130,6 @@ celerybeat.pid
 .env
 .venv
 env/
-venv/
 ENV/
 env.bak/
 venv.bak/
@@ -192,3 +190,28 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Ambientes Virtuais
+.venv/
+venv/
+
+# Arquivos de Cache do Python
+*.pyc
+
+# Pasta de Instância e Banco de Dados
+instance/
+
+# Arquivo de configuração com senhas
+config.py
+
+# Arquivos do PyCharm
+.idea/
+
+# Arquivos de script locais
+reset_and_run_complete.ps1
+admin_logins.csv
+simulate_games.py
+admin_logins.txt
+database.db
+instance/
+db.sqlite3

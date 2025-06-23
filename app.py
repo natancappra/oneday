@@ -9,12 +9,15 @@ from flask_admin.contrib.sqla import ModelView
 from flask_migrate import Migrate
 from flask import current_app
 from flask import Flask, render_template, redirect, url_for, request, abort, flash, send_file, jsonify, has_request_context
+from flask_mail import Mail, Message
+from itsdangerous import URLSafeTimedSerializer as Serializer
 import json
 from itertools import combinations
 
 import io
 import random
 import math
+import config
 
 import pandas as pd
 
@@ -45,6 +48,26 @@ app.config['SECRET_KEY'] = 'sua_chave_secreta_aqui'
 # Configurações iniciais das quadras (serão setadas via admin_master)
 app.config['NUM_QUADRAS_FUTEBOL'] = 3
 app.config['NUM_QUADRAS_VOLEI'] = 3
+
+# --- Configuração de E-mail (Flask-Mail) ---
+app.config.from_object(config)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' # Mantemos esta linha aqui por enquanto
+app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads') # E esta
+mail = Mail(app) # Inicializa a extensão
+
+# --- CLOUDINARY  ---
+import cloudinary
+import cloudinary.uploader
+import config # Importa o arquivo config.py que criamos
+
+cloudinary.config(
+  cloud_name = config.CLOUDINARY_CLOUD_NAME,
+  api_key = config.CLOUDINARY_API_KEY,
+  api_secret = config.CLOUDINARY_API_SECRET,
+  secure = True
+)
+# ----------------------------------------------
 
 # --- Inicialização das extensões ---
 db.init_app(app)
@@ -87,14 +110,79 @@ def from_json_filter(value):
 def load_user(user_id):
     return db.session.get(User, int(user_id))
 
+@app.route('/request_reset', methods=['GET', 'POST'])
+def request_reset():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    if request.method == 'POST':
+        email = request.form.get('email')
+        user = User.query.filter_by(email=email).first()
+        if user:
+            token = get_reset_token(user)
+            msg = Message('Redefinição de Senha - Campeonato Oneday',
+                          sender=('Campeonato Oneday', app.config['MAIL_USERNAME']),
+                          recipients=[user.email])
+
+            msg.body = f'''Para redefinir sua senha, visite o seguinte link:
+{url_for('reset_token', token=token, _external=True)}
+
+Este link é válido por 30 minutos.
+
+Se você não fez esta solicitação, simplesmente ignore este e-mail e nenhuma mudança será feita.
+'''
+            mail.send(msg)
+
+        # Mostra a mesma mensagem para e-mails existentes ou não, por segurança
+        flash('Se este e-mail estiver cadastrado, um link para redefinição de senha foi enviado.', 'info')
+        return redirect(url_for('login'))
+
+    return render_template('request_reset.html')
+
+@app.route('/reset_token/<token>', methods=['GET', 'POST'])
+def reset_token(token):
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    user = verify_reset_token(token)
+    if user is None:
+        flash('O link para redefinição de senha é inválido ou expirou.', 'warning')
+        return redirect(url_for('request_reset'))
+
+    if request.method == 'POST':
+        password = request.form.get('password')
+        confirm_password = request.form.get('confirm_password')
+        if password != confirm_password:
+            flash('As senhas não coincidem.', 'danger')
+            return redirect(url_for('reset_token', token=token))
+
+        user.set_password(password)
+        db.session.commit()
+        flash('Sua senha foi atualizada! Você já pode fazer login.', 'success')
+        return redirect(url_for('login'))
+
+    return render_template('reset_token.html')
 
 # --- Funções Auxiliares ---
+
+def get_public_id_from_url(url):
+    """Extrai o public_id de uma URL do Cloudinary para permitir a exclusão."""
+    if not url:
+        return None
+    try:
+        # Pega a parte depois da última "/"
+        public_id_com_extensao = url.split('/')[-1]
+        # Remove a extensão do arquivo (ex: .jpg, .png)
+        public_id = os.path.splitext(public_id_com_extensao)[0]
+        return public_id
+    except Exception:
+        return None
+
 def log_auditoria(acao):
     """
     Registra uma ação de auditoria no console.
     Agora é seguro para ser chamado de scripts fora de um request.
     """
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
     # Verifica se estamos em um contexto de request (alguém usando o site)
     # e se o usuário está logado.
@@ -125,16 +213,28 @@ def get_num_rounds(num_teams):
         return 0
     return (num_teams - 1).bit_length()
 
+#função de reset de token
+def get_reset_token(user, expires_sec=1800):
+    s = Serializer(app.config['SECRET_KEY'])
+    return s.dumps({'user_id': user.id})
+
+def verify_reset_token(token):
+    s = Serializer(app.config['SECRET_KEY'])
+    try:
+        # O token expira em 30 minutos (1800 segundos)
+        user_id = s.loads(token, max_age=1800)['user_id']
+    except:
+        return None
+    return User.query.get(user_id)
 
 # Função para registrar ações administrativas (Auditoria simples no console)
 def log_admin_action(action_description):
     if current_user.is_authenticated and current_user.is_admin:
         print(
-            f"AUDITORIA: Admin '{current_user.username}' realizou a ação: {action_description} em {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            f"AUDITORIA: Admin '{current_user.username}' realizou a ação: {action_description} em {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
     else:
         print(
-            f"AUDITORIA: Usuário não admin tentou realizar ação: {action_description} em {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
+            f"AUDITORIA: Usuário não admin tentou realizar ação: {action_description} em {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
 
 # Função para gerar o chaveamento e salvar no banco de dados
 
@@ -288,26 +388,37 @@ def logout():
 def signup():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
+
     if request.method == 'POST':
         username = request.form.get('username')
         email = request.form.get('email')
         password = request.form.get('password')
 
-        if User.query.filter_by(username=username).first():
-            flash('Nome de usuário já cadastrado', 'warning')
-            return redirect(url_for('signup'))
-        if User.query.filter_by(email=email).first():
-            flash('Email já cadastrado', 'warning')
+        # --- NOVA LÓGICA DE VERIFICAÇÃO ---
+
+        # 1. Verifica se o nome de usuário já existe
+        user_existente = User.query.filter_by(username=username).first()
+        if user_existente:
+            flash('Este nome de usuário já está em uso. Por favor, escolha outro.', 'danger')
             return redirect(url_for('signup'))
 
-        user = User(username=username, email=email)
-        user.set_password(password)
-        db.session.add(user)
+        # 2. Verifica se o e-mail já existe
+        email_existente = User.query.filter_by(email=email).first()
+        if email_existente:
+            flash('Este endereço de e-mail já foi cadastrado. Tente fazer o login ou recuperar sua senha.', 'danger')
+            return redirect(url_for('signup'))
+
+        # 3. Se tudo estiver ok, cria o novo usuário
+        novo_usuario = User(username=username, email=email, is_admin=False)
+        novo_usuario.set_password(password)
+        db.session.add(novo_usuario)
         db.session.commit()
-        log_admin_action(f"Novo usuário cadastrado: '{username}'")
-        flash('Cadastro realizado com sucesso. Faça login.', 'success')
+
+        log_auditoria(f"Novo usuário cadastrado: '{username}'")
+        flash('Conta criada com sucesso! Agora você pode fazer o login.', 'success')
         return redirect(url_for('login'))
-    return render_template('signup.html')
+
+    return render_template('signup.html', title='Cadastre-se')
 
 
 # --- Rotas principais ---
@@ -316,11 +427,14 @@ def signup():
 @login_required
 def index():
     if current_user.is_admin:
-        times = Time.query.all()
-        return render_template('lista_times.html', times=times, perfil='admin', now=datetime.now(timezone.utc))
-    else:
-        times = Time.query.filter_by(lider_id=current_user.id).all()
-        return render_template('lista_times.html', times=times, perfil='admin', now=datetime.now(timezone.utc))
+        # Se for admin, redireciona para o painel master
+        return redirect(url_for('admin_master'))
+
+    # Se for usuário comum, busca os times liderados por ele
+    times_liderados = Time.query.filter_by(lider_id=current_user.id).all()
+
+    # Usa o template 'lista_times.html', mas agora enviando os times que encontrou
+    return render_template('lista_times.html', times=times_liderados)
 
 
 @app.route('/times')
@@ -344,18 +458,17 @@ def cadastro_igreja():
         pagou = True if request.form.get('pagou') == 'on' else False
         diretor_jovem = request.form.get('diretor_jovem')
 
+        ## MUDANÇA 1: Lógica de Upload para o Comprovante ##
+        comprovante_url = None
         comprovante_file = request.files.get('comprovante_pagamento')
-        comprovante_filename = None
         if comprovante_file and allowed_file(comprovante_file.filename):
-            ext = os.path.splitext(comprovante_file.filename)[1]
-            comprovante_filename = f"{uuid.uuid4()}_comp{ext}"
-            upload_path = os.path.join(app.config['UPLOAD_FOLDER'], comprovante_filename)
             try:
-                comprovante_file.save(upload_path)
+                upload_result = cloudinary.uploader.upload(comprovante_file)
+                comprovante_url = upload_result.get('secure_url')
             except Exception as e:
-                flash(f'Erro ao salvar o comprovante: {e}', 'danger')
+                flash(f'Erro ao enviar o comprovante: {e}', 'danger')
                 return redirect(url_for('cadastro_igreja'))
-        elif comprovante_file and comprovante_file.filename != '' and not allowed_file(comprovante_file.filename):
+        elif comprovante_file and comprovante_file.filename != '':
             flash('Formato de comprovante inválido. Use PNG, JPG, JPEG, GIF ou PDF.', 'danger')
             return redirect(url_for('cadastro_igreja'))
 
@@ -363,21 +476,21 @@ def cadastro_igreja():
             flash('Nome da igreja e modalidade são campos obrigatórios.', 'warning')
             return redirect(url_for('cadastro_igreja'))
 
+        ## MUDANÇA 2: Lógica de Upload para a Imagem do Time ##
+        imagem_url = None
         imagem_file = request.files.get('imagem')
-        imagem_filename = None
         if imagem_file and allowed_file(imagem_file.filename):
-            ext = os.path.splitext(imagem_file.filename)[1]
-            imagem_filename = f"{uuid.uuid4()}{ext}"
-            upload_path = os.path.join(app.config['UPLOAD_FOLDER'], imagem_filename)
             try:
-                imagem_file.save(upload_path)
+                upload_result = cloudinary.uploader.upload(imagem_file)
+                imagem_url = upload_result.get('secure_url')
             except Exception as e:
-                flash(f'Erro ao salvar a imagem: {e}', 'danger')
+                flash(f'Erro ao enviar a imagem: {e}', 'danger')
                 return redirect(url_for('cadastro_igreja'))
-        elif imagem_file and imagem_file.filename != '' and not allowed_file(imagem_file.filename):
+        elif imagem_file and imagem_file.filename != '':
             flash('Formato de imagem inválido. Use PNG, JPG, JPEG ou GIF.', 'danger')
             return redirect(url_for('cadastro_igreja'))
 
+        ## MUDANÇA 3: Salvar as URLs no Banco de Dados ##
         novo_time = Time(
             nome_igreja=nome_igreja,
             distrito=distrito,
@@ -385,12 +498,11 @@ def cadastro_igreja():
             nome_base=nome_base,
             modalidade=modalidade,
             token=str(uuid.uuid4()),
-            data_limite_edicao=datetime.utcnow() + timedelta(days=7),
             lider_id=current_user.id,
-            imagem=imagem_filename,
+            imagem=imagem_url, # Salva a URL da imagem
             link_pagamento=LINK_PAGAMENTO_PADRAO,
             pagou=pagou,
-            comprovante_pagamento=comprovante_filename,
+            comprovante_pagamento=comprovante_url, # Salva a URL do comprovante
             diretor_jovem=diretor_jovem,
             limite_nao_adventistas=0
         )
@@ -404,24 +516,20 @@ def cadastro_igreja():
                            regiao_opcoes=REGIAO_OPCOES,
                            LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO)
 
-
 @app.route('/cadastro_jogador/<token>', methods=['GET', 'POST'])
 @login_required
 def cadastro_jogador(token):
     time = Time.query.filter_by(token=token).first_or_404()
     if time.lider_id != current_user.id and not current_user.is_admin:
         abort(403)
-    if datetime.utcnow() > time.data_limite_edicao and not current_user.is_admin:
-        flash('Prazo para edição expirado.', 'warning')
-        return redirect(url_for('ver_time', time_id=time.id))
 
     if time.cadastros_encerrados and not current_user.is_admin:
         flash('O cadastro de jogadores para este time foi encerrado.', 'warning')
         return redirect(url_for('ver_time', time_id=time.id))
 
     if request.method == 'POST':
-        # Coleta todos os dados do formulário primeiro
         nome_completo = request.form.get('nome_completo')
+        telefone = request.form.get('telefone')
         cpf = request.form.get('cpf')
         rg = request.form.get('rg')
         data_nascimento_str = request.form.get('data_nascimento')
@@ -430,75 +538,102 @@ def cadastro_jogador(token):
         foto_file = request.files.get('foto')
         foto_identidade_file = request.files.get('foto_identidade')
 
-        if not nome_completo:
-            flash('O nome completo do jogador é obrigatório.', 'danger')
+        if not nome_completo or not telefone:
+            flash('O nome completo e o telefone do jogador são obrigatórios.', 'danger')
             return redirect(url_for('cadastro_jogador', token=token))
 
-        # ... (suas validações de capitão e não adventista) ...
+        # VALIDAÇÃO DE DATA E IDADE
+        data_nascimento = None
+        if data_nascimento_str:
+            try:
+                data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
+                data_campeonato = date(2025, 6, 23)
+                idade = (data_campeonato - data_nascimento).days / 365.25
+
+                if time.modalidade == 'Futebol Masculino':
+                    if not (15 <= idade <= 35):
+                        flash('Erro: Para o Futebol Masculino, o jogador deve ter entre 15 e 35 anos.', 'danger')
+                        return redirect(url_for('cadastro_jogador', token=token))
+                elif time.modalidade in ['Futebol Feminino', 'Vôlei Misto']:
+                    if idade < 15:
+                        flash(f'Erro: Para a modalidade "{time.modalidade}", o jogador deve ter no mínimo 15 anos.',
+                              'danger')
+                        return redirect(url_for('cadastro_jogador', token=token))
+            # O 'except' deve estar alinhado com o 'try'
+            except ValueError:
+                flash('Formato de data de nascimento inválido. Use AAAA-MM-DD.', 'danger')
+                return redirect(url_for('cadastro_jogador', token=token))
+        else:
+            flash('A data de nascimento é obrigatória.', 'danger')
+            return redirect(url_for('cadastro_jogador', token=token))
+
+        # VALIDAÇÃO DE DUPLICIDADE
+        if cpf and cpf.strip():
+            jogador_existente = Jogador.query.filter_by(cpf=cpf.strip()).first()
+            if jogador_existente:
+                flash(f'Erro: Já existe um jogador cadastrado com o CPF {cpf}.', 'danger')
+                return redirect(url_for('cadastro_jogador', token=token))
+        if rg and rg.strip():
+            jogador_existente = Jogador.query.filter_by(rg=rg.strip()).first()
+            if jogador_existente:
+                flash(f'Erro: Já existe um jogador cadastrado com o RG {rg}.', 'danger')
+                return redirect(url_for('cadastro_jogador', token=token))
+
+        # OUTRAS VALIDAÇÕES
         if not is_adventista and time.limite_nao_adventistas is not None:
             non_adventista_count = sum(1 for j in time.jogadores if not j.is_adventista)
             if non_adventista_count >= time.limite_nao_adventistas:
                 flash(f'Limite de {time.limite_nao_adventistas} jogadores não adventistas atingido.', 'danger')
                 return redirect(url_for('cadastro_jogador', token=token))
-
         if is_capitao:
             existing_captain = Jogador.query.filter_by(time_id=time.id, is_capitao=True).first()
             if existing_captain:
                 flash(f'O time já possui um capitão ({existing_captain.nome_completo}).', 'danger')
                 return redirect(url_for('cadastro_jogador', token=token))
 
-        # Processamento de arquivos
-        foto_filename = None
+        # LÓGICA DE UPLOAD
+        foto_url = None
         if foto_file and allowed_file(foto_file.filename):
-            ext = os.path.splitext(foto_file.filename)[1]
-            foto_filename = f"{uuid.uuid4()}{ext}"
-            foto_file.save(os.path.join(app.config['UPLOAD_FOLDER'], foto_filename))
-
-        foto_identidade_filename = None
-        if foto_identidade_file and allowed_file(foto_identidade_file.filename):
-            ext = os.path.splitext(foto_identidade_file.filename)[1]
-            foto_identidade_filename = f"{uuid.uuid4()}_id{ext}"
-            foto_identidade_file.save(os.path.join(app.config['UPLOAD_FOLDER'], foto_identidade_filename))
-
-        # Converte a data
-        data_nascimento = None
-        if data_nascimento_str:
             try:
-                data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
-            except ValueError:
-                flash('Formato de data de nascimento inválido. Use AAAA-MM-DD.', 'danger')
+                upload_result = cloudinary.uploader.upload(foto_file)
+                foto_url = upload_result.get('secure_url')
+            except Exception as e:
+                flash(f'Erro ao enviar foto para o Cloudinary: {e}', 'danger')
                 return redirect(url_for('cadastro_jogador', token=token))
 
-        # Agora sim, cria o objeto Jogador
-        novo_jogador = Jogador(
-            nome_completo=nome_completo,
-            cpf=cpf,
-            rg=rg,
-            data_nascimento=data_nascimento,
-            is_adventista=is_adventista,
-            is_capitao=is_capitao,
-            foto=foto_filename,
-            foto_identidade=foto_identidade_filename,
-            time_id=time.id
-        )
+        foto_identidade_url = None
+        if foto_identidade_file and allowed_file(foto_identidade_file.filename):
+            try:
+                upload_result = cloudinary.uploader.upload(foto_identidade_file)
+                foto_identidade_url = upload_result.get('secure_url')
+            except Exception as e:
+                flash(f'Erro ao enviar foto da identidade para o Cloudinary: {e}', 'danger')
+                return redirect(url_for('cadastro_jogador', token=token))
 
+        # SALVANDO NO BANCO
+        novo_jogador = Jogador(
+            nome_completo=nome_completo, telefone=telefone, cpf=cpf, rg=rg,
+            data_nascimento=data_nascimento, is_adventista=is_adventista, is_capitao=is_capitao,
+            foto=foto_url, foto_identidade=foto_identidade_url, time_id=time.id
+        )
         db.session.add(novo_jogador)
         db.session.commit()
         log_admin_action(f"Cadastrou jogador '{novo_jogador.nome_completo}' para o time '{time.nome_igreja}'")
         flash('Jogador cadastrado com sucesso!', 'success')
         return redirect(url_for('ver_time', time_id=time.id))
 
+    # O 'return render_template' deve estar alinhado com o 'if request.method...'
     return render_template('cadastro_jogador.html', time=time, perfil='lider')
-
 
 @app.route('/time/<int:time_id>')
 @login_required
 def ver_time(time_id):
-    time = db.session.get(Time, time_id) # Aproveitando para corrigir este também
+    time = db.session.get(Time, time_id)
     if not time:
         abort(404)
     if not current_user.is_admin and time.lider_id != current_user.id:
         abort(403)
+
     return render_template('ver_time.html', time=time, perfil='admin' if current_user.is_admin else 'lider',
                            now=datetime.now(timezone.utc))
 
@@ -509,9 +644,6 @@ def editar_time(token):
     time = Time.query.filter_by(token=token).first_or_404()
     if time.lider_id != current_user.id and not current_user.is_admin:
         abort(403)
-    if datetime.utcnow() > time.data_limite_edicao and not current_user.is_admin:
-        flash('Prazo para edição expirado.', 'warning')
-        return redirect(url_for('ver_time', time_id=time.id))
 
     if time.cadastros_encerrados and not current_user.is_admin:
         flash('As edições para este time foram encerradas.', 'warning')
@@ -526,56 +658,57 @@ def editar_time(token):
         time.pagou = True if request.form.get('pagou') == 'on' else False
         time.diretor_jovem = request.form.get('diretor_jovem')
 
+        ## MUDANÇA 1: Lógica de Upload do Comprovante ##
         comprovante_file = request.files.get('comprovante_pagamento')
         if comprovante_file and allowed_file(comprovante_file.filename):
-            ext = os.path.splitext(comprovante_file.filename)[1]
-            new_filename = f"{uuid.uuid4()}_comp{ext}"
-            upload_path = os.path.join(app.config['UPLOAD_FOLDER'], new_filename)
             try:
-                comprovante_file.save(upload_path)
+                # Envia o novo arquivo
+                upload_result = cloudinary.uploader.upload(comprovante_file)
+                # Apaga o arquivo antigo do Cloudinary, se existir
                 if time.comprovante_pagamento:
-                    old_comp_path = os.path.join(app.config['UPLOAD_FOLDER'], time.comprovante_pagamento)
-                    if os.path.exists(old_comp_path):
-                        os.remove(old_comp_path)
-                time.comprovante_pagamento = new_filename
+                    old_public_id = get_public_id_from_url(time.comprovante_pagamento)
+                    if old_public_id:
+                        cloudinary.uploader.destroy(old_public_id)
+                # Atualiza o banco de dados com a nova URL
+                time.comprovante_pagamento = upload_result.get('secure_url')
             except Exception as e:
                 flash(f'Erro ao atualizar o comprovante: {e}', 'danger')
                 return redirect(url_for('editar_time', token=token))
-        elif comprovante_file and comprovante_file.filename != '' and not allowed_file(comprovante_file.filename):
+        elif comprovante_file and comprovante_file.filename != '':
             flash('Formato de comprovante inválido. Use PNG, JPG, JPEG, GIF ou PDF.', 'danger')
             return redirect(url_for('editar_time', token=token))
 
+        ## MUDANÇA 2: Lógica de Upload da Imagem do Time ##
         imagem_file = request.files.get('imagem')
         if imagem_file and allowed_file(imagem_file.filename):
-            ext = os.path.splitext(imagem_file.filename)[1]
-            new_filename = f"{uuid.uuid4()}{ext}"
-            upload_path = os.path.join(app.config['UPLOAD_FOLDER'], new_filename)
             try:
-                imagem_file.save(upload_path)
+                # Envia o novo arquivo
+                upload_result = cloudinary.uploader.upload(imagem_file)
+                # Apaga o arquivo antigo do Cloudinary, se existir
                 if time.imagem:
-                    old_image_path = os.path.join(app.config['UPLOAD_FOLDER'], time.imagem)
-                    if os.path.exists(old_image_path):
-                        os.remove(old_image_path)
-                time.imagem = new_filename
+                    old_public_id = get_public_id_from_url(time.imagem)
+                    if old_public_id:
+                        cloudinary.uploader.destroy(old_public_id)
+                # Atualiza o banco de dados com a nova URL
+                time.imagem = upload_result.get('secure_url')
             except Exception as e:
                 flash(f'Erro ao atualizar a imagem: {e}', 'danger')
                 return redirect(url_for('editar_time', token=token))
-        elif imagem_file and imagem_file.filename != '' and not allowed_file(imagem_file.filename):
+        elif imagem_file and imagem_file.filename != '':
             flash('Formato de imagem inválido. Use PNG, JPG, JPEG ou GIF.', 'danger')
             return redirect(url_for('editar_time', token=token))
 
         time.link_pagamento = LINK_PAGAMENTO_PADRAO
-
         db.session.commit()
         log_admin_action(f"Editou time: '{time.nome_igreja}'")
         flash('Time atualizado com sucesso.', 'success')
         return redirect(url_for('ver_time', time_id=time.id))
+
     return render_template('editar_time.html',
                            time=time,
                            regiao_opcoes=REGIAO_OPCOES,
                            LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO,
                            perfil='lider')
-
 
 @app.route('/editar_jogador/<int:jogador_id>', methods=['GET', 'POST'])
 @login_required
@@ -584,110 +717,112 @@ def editar_jogador(jogador_id):
     time = jogador.time
     if time.lider_id != current_user.id and not current_user.is_admin:
         abort(403)
-    if datetime.utcnow() > time.data_limite_edicao and not current_user.is_admin:
-        flash('Prazo para edição expirado.', 'warning')
-        return redirect(url_for('ver_time', time_id=time.id))
 
     if time.cadastros_encerrados and not current_user.is_admin:
         flash('As edições para este time foram encerrada.', 'warning')
         return redirect(url_for('ver_time', time_id=time.id))
 
     if request.method == 'POST':
-        is_adventista = True if request.form.get('is_adventista') == 'on' else False
-        is_capitao = True if request.form.get('is_capitao') == 'on' else False
-
-        if not is_adventista and time.limite_nao_adventistas is not None:
-            non_adventista_count = sum(1 for j in time.jogadores if not j.is_adventista)
-            if non_adventista_count >= time.limite_nao_adventistas:
-                flash(f'Limite de {time.limite_nao_adventistas} jogadores não adventistas atingido para este time.',
-                      'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-        elif not is_adventista and time.limite_nao_adventistas is not None and jogador.is_adventista:
-            non_adventista_count = sum(1 for j in time.jogadores if not j.is_adventista)
-            if non_adventista_count >= time.limite_nao_adventistas:
-                flash(
-                    'Limite de {time.limite_nao_adventistas} jogadores não adventistas atingido para este time. Não é possível transformar este jogador em não-adventista.',
-                    'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-
-        if is_capitao:
-            existing_captain = Jogador.query.filter_by(time_id=time.id, is_capitao=True).first()
-            if existing_captain:
-                flash(
-                    f'O time já possui um capitão ({existing_captain.nome_completo}). Por favor, remova o capitão atual antes de designar um novo.',
-                    'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-            elif existing_captain and existing_captain.id == jogador.id and not is_capitao:
-                jogador.is_capitao = False
-
-        if not jogador.is_capitao and is_capitao:
-            Jogador.query.filter_by(time_id=time.id, is_capitao=True).update({'is_capitao': False})
-            db.session.commit()
-
-        foto_file = request.files.get('foto')
-        if foto_file and allowed_file(foto_file.filename):
-            ext = os.path.splitext(foto_file.filename)[1]
-            nome_arquivo = f"{uuid.uuid4()}{ext}"
-            caminho_foto = os.path.join(app.config['UPLOAD_FOLDER'], nome_arquivo)
-            try:
-                foto_file.save(caminho_foto)
-                if jogador.foto:
-                    old_photo_path = os.path.join(app.config['UPLOAD_FOLDER'], jogador.foto)
-                    if os.path.exists(old_photo_path):
-                        os.remove(old_photo_path)
-                jogador.foto = nome_arquivo
-            except Exception as e:
-                flash(f'Erro ao atualizar a foto do jogador: {e}', 'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-        elif foto_file and foto_file.filename != '' and not allowed_file(foto_file.filename):
-            flash('Formato de foto do jogador inválido. Use PNG, JPG, JPEG ou GIF.', 'danger')
-            return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-
-        foto_identidade_file = request.files.get('foto_identidade')
-        if foto_identidade_file and allowed_file(foto_identidade_file.filename):
-            ext = os.path.splitext(foto_identidade_file.filename)[1]
-            foto_identidade_filename = f"{uuid.uuid4()}_id{ext}"
-            caminho_identidade = os.path.join(app.config['UPLOAD_FOLDER'], foto_identidade_filename)
-            try:
-                foto_identidade_file.save(caminho_identidade)
-                if jogador.foto_identidade:
-                    old_id_path = os.path.join(app.config['UPLOAD_FOLDER'], jogador.foto_identidade)
-                    if os.path.exists(old_id_path):
-                        os.remove(old_id_path)
-                jogador.foto_identidade = foto_identidade_filename
-            except Exception as e:
-                flash(f'Erro ao atualizar a foto da identidade: {e}', 'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-        elif foto_identidade_file and foto_identidade_file.filename != '' and not allowed_file(
-                foto_identidade_file.filename):
-            flash('Formato da foto da identidade inválido. Use PNG, JPG, JPEG ou GIF.', 'danger')
-            return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-
-        jogador.nome_completo = request.form.get('nome_completo')
-        jogador.cpf = request.form.get('cpf')
-        jogador.rg = request.form.get('rg')
-        jogador.is_adventista = is_adventista
-        jogador.is_capitao = is_capitao
-
+        # Pega os dados do formulário
+        nome_completo = request.form.get('nome_completo')
+        telefone = request.form.get('telefone')
+        cpf = request.form.get('cpf')
+        rg = request.form.get('rg')
         data_nascimento_str = request.form.get('data_nascimento')
+        is_adventista = 'is_adventista' in request.form
+        is_capitao = 'is_capitao' in request.form
+
+        # --- VALIDAÇÕES DE INTEGRIDADE ---
+
+        # 1. VALIDAÇÃO DE IDADE
+        data_nascimento = None # Inicializa a variável
         if data_nascimento_str:
             try:
-                jogador.data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
+                data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
+                data_campeonato = date(2025, 6, 23)
+                idade = (data_campeonato - data_nascimento).days / 365.25
+
+                if time.modalidade == 'Futebol Masculino':
+                    if not (15 <= idade <= 35):
+                        flash('Erro: Para o Futebol Masculino, a idade do jogador deve ser entre 15 e 35 anos.', 'danger')
+                        return redirect(url_for('editar_jogador', jogador_id=jogador_id))
+                elif time.modalidade in ['Futebol Feminino', 'Vôlei Misto']:
+                    if idade < 15:
+                        flash(f'Erro: Para a modalidade "{time.modalidade}", o jogador deve ter no mínimo 15 anos.', 'danger')
+                        return redirect(url_for('editar_jogador', jogador_id=jogador_id))
             except ValueError:
+                # Este 'except' está alinhado com o 'try' acima
                 flash('Formato de data de nascimento inválido. Use AAAA-MM-DD.', 'danger')
                 return redirect(url_for('editar_jogador', jogador_id=jogador_id))
         else:
-            jogador.data_nascimento = None
+            flash('A data de nascimento é obrigatória.', 'danger')
+            return redirect(url_for('editar_jogador', jogador_id=jogador_id))
+
+        # 2. VALIDAÇÃO DE CPF/RG DUPLICADO
+        if cpf and cpf.strip():
+            outro_jogador_com_cpf = Jogador.query.filter(Jogador.cpf == cpf.strip(), Jogador.id != jogador_id).first()
+            if outro_jogador_com_cpf:
+                flash(f'Erro: O CPF {cpf} já pertence a outro jogador.', 'danger')
+                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
+
+        if rg and rg.strip():
+            outro_jogador_com_rg = Jogador.query.filter(Jogador.rg == rg.strip(), Jogador.id != jogador_id).first()
+            if outro_jogador_com_rg:
+                flash(f'Erro: O RG {rg} já pertence a outro jogador.', 'danger')
+                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
+
+        # --- LÓGICA DE ATUALIZAÇÃO ---
+
+        # Validação de capitão
+        if is_capitao:
+            outro_capitao = Jogador.query.filter(Jogador.time_id == time.id, Jogador.is_capitao == True, Jogador.id != jogador_id).first()
+            if outro_capitao:
+                flash(f'O time já possui um capitão ({outro_capitao.nome_completo}). Desmarque o capitão antigo antes de definir um novo.', 'danger')
+                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
+
+        # Upload de arquivos
+        foto_file = request.files.get('foto')
+        if foto_file and allowed_file(foto_file.filename):
+            try:
+                upload_result = cloudinary.uploader.upload(foto_file)
+                if jogador.foto:
+                    old_public_id = get_public_id_from_url(jogador.foto)
+                    if old_public_id:
+                        cloudinary.uploader.destroy(old_public_id)
+                jogador.foto = upload_result.get('secure_url')
+            except Exception as e:
+                flash(f'Erro ao atualizar a foto do jogador: {e}', 'danger')
+                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
+
+        foto_identidade_file = request.files.get('foto_identidade')
+        if foto_identidade_file and allowed_file(foto_identidade_file.filename):
+            try:
+                upload_result = cloudinary.uploader.upload(foto_identidade_file)
+                if jogador.foto_identidade:
+                    old_public_id = get_public_id_from_url(jogador.foto_identidade)
+                    if old_public_id:
+                        cloudinary.uploader.destroy(old_public_id)
+                jogador.foto_identidade = upload_result.get('secure_url')
+            except Exception as e:
+                flash(f'Erro ao atualizar a foto da identidade: {e}', 'danger')
+                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
+
+        # Atualiza os dados no banco
+        jogador.nome_completo = nome_completo
+        jogador.telefone = telefone
+        jogador.cpf = cpf
+        jogador.rg = rg
+        jogador.is_adventista = is_adventista
+        jogador.is_capitao = is_capitao
+        jogador.data_nascimento = data_nascimento
 
         db.session.commit()
-        log_admin_action(
-            f"Editou jogador '{jogador.nome_completo}' (ID: {jogador.id}) do time '{time.nome_igreja}' (ID: {time.id})")
+        log_admin_action(f"Editou jogador '{jogador.nome_completo}' (ID: {jogador.id}) do time '{time.nome_igreja}' (ID: {time.id})")
         flash('Jogador atualizado com sucesso.', 'success')
         return redirect(url_for('ver_time', time_id=time.id))
 
     return render_template('editar_jogador.html', jogador=jogador,
                            perfil='lider' if not current_user.is_admin else 'admin')
-
 
 @app.route('/excluir_jogador/<int:jogador_id>', methods=['POST'])
 @login_required
@@ -696,22 +831,24 @@ def excluir_jogador(jogador_id):
     time = jogador.time
     if time.lider_id != current_user.id and not current_user.is_admin:
         abort(403)
-    if datetime.utcnow() > time.data_limite_edicao and not current_user.is_admin:
-        flash('Prazo para edição expirado.', 'warning')
-        return redirect(url_for('ver_time', time_id=time.id))
 
     if time.cadastros_encerrados and not current_user.is_admin:
         flash('As edições para este time foram encerrada.', 'warning')
         return redirect(url_for('ver_time', time_id=time.id))
 
+    # Apaga a foto do jogador do Cloudinary, se existir
     if jogador.foto:
-        foto_path = os.path.join(app.config['UPLOAD_FOLDER'], jogador.foto)
-        if os.path.exists(foto_path):
-            os.remove(foto_path)
+        public_id = get_public_id_from_url(jogador.foto)
+        if public_id:
+            cloudinary.uploader.destroy(public_id)
+            log_auditoria(f"Excluiu do Cloudinary (foto jogador): {public_id}")
+
+    # Apaga a foto da identidade do Cloudinary, se existir
     if jogador.foto_identidade:
-        id_path = os.path.join(app.config['UPLOAD_FOLDER'], jogador.foto_identidade)
-        if os.path.exists(id_path):
-            os.remove(id_path)
+        public_id = get_public_id_from_url(jogador.foto_identidade)
+        if public_id:
+            cloudinary.uploader.destroy(public_id)
+            log_auditoria(f"Excluiu do Cloudinary (identidade): {public_id}")
 
     db.session.delete(jogador)
     db.session.commit()
@@ -728,20 +865,33 @@ def excluir_time(time_id):
     if not current_user.is_admin and time.lider_id != current_user.id:
         abort(403)
 
-    if time.imagem:
-        imagem_path = os.path.join(app.config['UPLOAD_FOLDER'], time.imagem)
-        if os.path.exists(imagem_path):
-            os.remove(imagem_path)
+        # Apaga a imagem/logo do time do Cloudinary
+        if time.imagem:
+            public_id = get_public_id_from_url(time.imagem)
+            if public_id:
+                cloudinary.uploader.destroy(public_id)
+                log_auditoria(f"Excluiu do Cloudinary (logo time): {public_id}")
 
-    for jogador in time.jogadores:
-        if jogador.foto:
-            foto_path = os.path.join(app.config['UPLOAD_FOLDER'], jogador.foto)
-            if os.path.exists(foto_path):
-                os.remove(foto_path)
-        if jogador.foto_identidade:
-            id_path = os.path.join(app.config['UPLOAD_FOLDER'], jogador.foto_identidade)
-            if os.path.exists(id_path):
-                os.remove(id_path)
+        # Apaga o comprovante de pagamento do Cloudinary
+        if time.comprovante_pagamento:
+            public_id = get_public_id_from_url(time.comprovante_pagamento)
+            if public_id:
+                cloudinary.uploader.destroy(public_id)
+                log_auditoria(f"Excluiu do Cloudinary (comprovante): {public_id}")
+
+        # Itera sobre todos os jogadores do time e apaga suas imagens também
+        for jogador in time.jogadores:
+            if jogador.foto:
+                public_id = get_public_id_from_url(jogador.foto)
+                if public_id:
+                    cloudinary.uploader.destroy(public_id)
+                    log_auditoria(f"Excluiu do Cloudinary (foto jogador): {public_id}")
+
+            if jogador.foto_identidade:
+                public_id = get_public_id_from_url(jogador.foto_identidade)
+                if public_id:
+                    cloudinary.uploader.destroy(public_id)
+                    log_auditoria(f"Excluiu do Cloudinary (identidade): {public_id}")
 
     Game.query.filter(
         (Game.time_a_id == time.id) |
@@ -763,7 +913,6 @@ def admin_master():
     if not current_user.is_admin:
         return redirect(url_for('index'))
 
-    # Coletamos todas as informações que o template precisa saber
     config = Configuracao.query.first()
     if not config:
         config = Configuracao()
@@ -772,25 +921,37 @@ def admin_master():
 
     times_validos = Time.query.order_by(Time.modalidade, Time.nome_igreja).all()
 
-    # --- NOVAS VERIFICAÇÕES LÓGICAS ---
-    # 1. Verifica se o torneio (jogos) já foi gerado alguma vez
     torneio_gerado = db.session.query(Game.id).first() is not None
-
-    # 2. Verifica se as quadras foram configuradas (se todos os campos são maiores que 0)
     quadras_configuradas = all([
         config.num_quadras_fut_masc > 0,
         config.num_quadras_fut_fem > 0,
         config.num_quadras_volei_misto > 0
     ])
-    # ------------------------------------
 
     return render_template('admin_master.html',
                            times=times_validos,
                            config=config,
-                           # Passamos as novas flags para o template
                            torneio_gerado=torneio_gerado,
                            quadras_configuradas=quadras_configuradas)
 
+# Adicionar em app.py
+@app.route('/admin/config_limites', methods=['POST'])
+@login_required
+def config_limites():
+    if not current_user.is_admin:
+        abort(403)
+    config = Configuracao.query.first()
+    if not config:
+        config = Configuracao()
+        db.session.add(config)
+
+    config.limite_nao_adv_fut_masc = int(request.form.get('limite_nao_adv_fut_masc', 1))
+    config.limite_nao_adv_fut_fem = int(request.form.get('limite_nao_adv_fut_fem', 2))
+    config.limite_nao_adv_volei_misto = int(request.form.get('limite_nao_adv_volei_misto', 1))
+
+    db.session.commit()
+    flash('Limites de jogadores não adventistas atualizados!', 'success')
+    return redirect(url_for('admin_master'))
 
 @app.route('/admin/config_time/<int:time_id>', methods=['GET', 'POST'])
 @login_required
@@ -869,61 +1030,78 @@ def toggle_cadastros_globais():
     flash(f'Status de cadastros globais alterado para {"Encerrados" if new_status else "Abertos"}.', 'success')
     return redirect(url_for('admin_master'))
 
-
 @app.route('/admin/relatorio_excel')
 @login_required
 def relatorio_excel():
     if not current_user.is_admin:
         abort(403)
 
-    data_for_excel = []
-    times = db.session.query(Time).options(db.joinedload(Time.jogadores)).all()
+    try:
+        # Prepara o arquivo Excel em memória para não salvar no servidor
+        output = io.BytesIO()
+        writer = pd.ExcelWriter(output, engine='xlsxwriter')
 
-    for time in times:
-        for jogador in time.jogadores:
-            data_for_excel.append({
-                'ID Time': time.id,
+        # --- ABA 1: RELATÓRIO APENAS DOS TIMES ---
+        times_query = Time.query.order_by(Time.nome_igreja).all()
+        dados_times = []
+        for time in times_query:
+            dados_times.append({
+                'ID do Time': time.id,
                 'Nome da Igreja': time.nome_igreja,
-                'Diretor Jovem': time.diretor_jovem if time.diretor_jovem else '',
+                'Diretor Jovem': time.diretor_jovem,
                 'Distrito': time.distrito,
                 'Região': time.regiao,
                 'Nome da Base': time.nome_base,
                 'Modalidade': time.modalidade,
-                'Link Pagamento': time.link_pagamento,
-                'Pagou': 'Sim' if time.pagou else 'Não',
-                'Comprovante Pagamento': url_for('static', filename='uploads/' + time.comprovante_pagamento,
-                                                 _external=True) if time.comprovante_pagamento else '',
-                'Cadastro Encerrado': 'Sim' if time.cadastros_encerrados else 'Não',
-                'Limite Não Adventistas': time.limite_nao_adventistas,
-                'ID Jogador': jogador.id,
-                'Nome Completo Jogador': jogador.nome_completo,
-                'CPF Jogador': jogador.cpf,
-                'RG Jogador': jogador.rg,
-                'Data Nascimento Jogador': jogador.data_nascimento.strftime(
-                    '%d/%m/%Y') if jogador.data_nascimento else '',
-                'Adventista': 'Sim' if jogador.is_adventista else 'Não',
-                'Capitão': 'Sim' if jogador.is_capitao else 'Não',
-                'Caminho Foto Jogador': url_for('static', filename='uploads/' + jogador.foto,
-                                                _external=True) if jogador.foto else '',
-                'Caminho Foto Identidade': url_for('static', filename='uploads/' + jogador.foto_identidade,
-                                                   _external=True) if jogador.foto_identidade else ''
+                'Pagamento Confirmado': 'Sim' if time.pagou else 'Não',
+                'Comprovante (Link)': time.comprovante_pagamento if time.comprovante_pagamento else 'N/A',
+                'Cadastro Encerrado pelo Admin': 'Sim' if time.cadastros_encerrados else 'Não'
             })
 
-    df = pd.DataFrame(data_for_excel)
+        df_times = pd.DataFrame(dados_times)
+        # Escreve os dados dos times na primeira aba
+        df_times.to_excel(writer, sheet_name='Times Cadastrados', index=False)
 
-    output = io.BytesIO()
-    writer = pd.ExcelWriter(output, engine='xlsxwriter')
-    df.to_excel(writer, sheet_name='Dados dos Times e Jogadores', index=False)
-    writer.close()
-    output.seek(0)
+        # --- ABA 2: RELATÓRIO DE TODOS OS JOGADORES ---
+        jogadores_query = db.session.query(Jogador).join(Time).order_by(Time.nome_igreja, Jogador.nome_completo).all()
+        dados_jogadores = []
+        for jogador in jogadores_query:
+            dados_jogadores.append({
+                'Nome do Jogador': jogador.nome_completo,
+                'Telefone': jogador.telefone,
+                'CPF': jogador.cpf,
+                'RG': jogador.rg,
+                'Data de Nascimento': jogador.data_nascimento.strftime('%d/%m/%Y') if jogador.data_nascimento else '',
+                'É Adventista?': 'Sim' if jogador.is_adventista else 'Não',
+                'É Capitão?': 'Sim' if jogador.is_capitao else 'Não',
+                'Igreja/Time': jogador.time.nome_igreja,  # Informação do time associado
+                'Distrito': jogador.time.distrito,  # Informação do time associado
+                'Foto do Jogador (Link)': jogador.foto if jogador.foto else 'N/A',
+                'Foto da Identidade (Link)': jogador.foto_identidade if jogador.foto_identidade else 'N/A'
+            })
 
-    log_admin_action("Gerou relatório Excel de times e jogadores.")
-    return send_file(
-        output,
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        download_name='relatorio_times_jogadores.xlsx',
-        as_attachment=True
-    )
+        df_jogadores = pd.DataFrame(dados_jogadores)
+        # Escreve os dados dos jogadores na segunda aba
+        df_jogadores.to_excel(writer, sheet_name='Jogadores Inscritos', index=False)
+
+        # Salva o arquivo Excel em memória
+        writer.close()
+        output.seek(0)
+
+        log_admin_action("Gerou relatório Excel com abas de Times e Jogadores.")
+
+        # Envia o arquivo para download direto no navegador
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            download_name='relatorio_campeonato_oneday.xlsx',
+            as_attachment=True
+        )
+
+    except Exception as e:
+        flash(f'Ocorreu um erro ao gerar o relatório: {e}', 'danger')
+        log_admin_action(f"Falha ao gerar relatório Excel: {e}")
+        return redirect(url_for('admin_master'))
 
 # --- Rotas e Lógica para Chaveamento ---
 @app.route('/admin/gerar_chaveamento', methods=['POST'])
@@ -1353,11 +1531,6 @@ def chaveamento_publico_view():
                            jogos_fut_fem=fut_fem,
                            jogos_volei=volei_misto)
 
-
-# Em app.py
-
-# Em app.py
-
 @app.route('/grupos/<modalidade>')
 def visualizar_grupos(modalidade):
     grupos = Grupo.query.filter_by(modalidade=modalidade).order_by(Grupo.nome).all()
@@ -1374,13 +1547,11 @@ def visualizar_grupos(modalidade):
         Game.fase.in_(fases_mata_mata)
     ).first() is not None
 
-    # --- LÓGICA DE BUSCA DO PÓDIO MAIS ROBUSTA ---
     campeao, vice_campeao, terceiro_lugar = None, None, None
     if tem_fase_final:
         jogo_final = Game.query.filter_by(modalidade=modalidade, fase='Final').first()
         if jogo_final and jogo_final.finalizado and jogo_final.vencedor_id:
             campeao = Time.query.get(jogo_final.vencedor_id)
-            # O vice-campeão é o outro time da final
             outro_time_id = jogo_final.time_b_id if jogo_final.vencedor_id == jogo_final.time_a_id else jogo_final.time_a_id
             if outro_time_id:
                 vice_campeao = Time.query.get(outro_time_id)
@@ -1399,11 +1570,7 @@ def visualizar_grupos(modalidade):
 
 @app.route('/api/dados_mata_mata/<modalidade>')
 def api_dados_mata_mata(modalidade):
-    """
-    VERSÃO FINAL REESCRITA: Garante a estrutura correta para o jquery-bracket.
-    """
     fases_mata_mata = ['Quartas de Final', 'Semifinal', 'Final']
-
     jogos_mata_mata = Game.query.filter(
         Game.modalidade == modalidade,
         Game.fase.in_(fases_mata_mata)
@@ -1412,7 +1579,6 @@ def api_dados_mata_mata(modalidade):
     if not jogos_mata_mata:
         return jsonify(teams=[], results=[])
 
-    # 1. Monta a lista de times da primeira rodada (Quartas ou Semis)
     primeira_fase_nome = jogos_mata_mata[0].fase
     jogos_primeira_rodada = [j for j in jogos_mata_mata if j.fase == primeira_fase_nome]
 
@@ -1422,7 +1588,6 @@ def api_dados_mata_mata(modalidade):
         time_b_nome = jogo.time_b.nome_igreja if jogo.time_b else "A definir"
         teams.append([time_a_nome, time_b_nome])
 
-    # 2. Monta a estrutura de resultados
     results = []
     fases_encontradas = sorted(list(set(j.fase for j in jogos_mata_mata)), key=lambda x: fases_mata_mata.index(x))
 
@@ -1432,7 +1597,6 @@ def api_dados_mata_mata(modalidade):
         for jogo in jogos_da_fase:
             placar_a, placar_b = None, None
             if jogo.finalizado:
-                # Trata placares nulos como 0 para não quebrar o gráfico
                 if 'Futebol' in jogo.modalidade:
                     placar_a = jogo.gols_time_a or 0
                     placar_b = jogo.gols_time_b or 0

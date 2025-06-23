@@ -7,99 +7,104 @@
 <p><strong>Região:</strong> {{ time.regiao }}</p>
 <p><strong>Nome da Base:</strong> {{ time.nome_base }}</p>
 <p><strong>Modalidade:</strong> {{ time.modalidade }}</p>
-<p><strong>Link de Pagamento:</strong> {% if time.link_pagamento %}<a href="{{ time.link_pagamento }}" target="_blank">{{ time.link_pagamento }}</a>{% else %}Não informado{% endif %}</p>
+<p><strong>Link de Pagamento:</strong> {% if time.link_pagamento %}<a href="{{ time.link_pagamento }}" target="_blank">{{
+    time.link_pagamento }}</a>{% else %}Não informado{% endif %}</p>
 <p><strong>Pagamento:</strong>
-  {% if time.pagou %}
+    {% if time.pagou %}
     <span class="badge bg-success">Pago</span>
-  {% else %}
+    {% else %}
     <span class="badge bg-danger">Pendente</span>
-  {% endif %}
+    {% endif %}
 </p>
 <p><strong>Comprovante:</strong>
-  {% if time.comprovante_pagamento %}
-    <a href="{{ url_for('static', filename='uploads/' ~ time.comprovante_pagamento) }}" target="_blank">Ver Comprovante</a>
-  {% else %}
+    {% if time.comprovante_pagamento %}
+    <a href="{{ time.comprovante_pagamento }}" target="_blank">Ver Comprovante</a>
+    {% else %}
     N/A
-  {% endif %}
+    {% endif %}
 </p>
-<p><strong>Prazo para Edição:</strong> {{ time.data_limite_edicao.strftime('%d/%m/%Y %H:%M') }} (Faltam {{ (time.data_limite_edicao.date() - now.date()).days }} dias)</p>
+
 <p><strong>Cadastros Encerrados:</strong> {{ 'Sim' if time.cadastros_encerrados else 'Não' }}</p>
 <p><strong>Limite de Não Adventistas:</strong> {{ time.limite_nao_adventistas }}</p>
 
 {% if time.imagem %}
-  <div>
-    <img src="{{ url_for('static', filename='uploads/' + time.imagem) }}" alt="Imagem do Time" style="max-width:200px; height:auto;">
-  </div>
+<img src="{{ time.imagem or url_for('static', filename='img/default_logo.png') }}" alt="Logo do time" class="img-preview-pagina mb-4" style="width: 200px; height: 200px; object-fit: cover; border-radius: 50%; border: 4px solid #dee2e6; box-shadow: 0 5px 15px rgba(0,0,0,0.1); display: block; margin-bottom: 1.5rem;">
 {% endif %}
 <br>
 
-{% if (time.data_limite_edicao > now and not time.cadastros_encerrados) or perfil == 'admin' %}
-  {% if perfil == 'admin' or (perfil == 'lider' and time.lider_id == current_user.id) %}
-    <a href="{{ url_for('editar_time', token=time.token) }}" class="btn btn-warning mb-3">Editar Time</a>
-    <a href="{{ url_for('cadastro_jogador', token=time.token) }}" class="btn btn-success mb-3">Adicionar Novo Jogador</a>
-  {% endif %}
+{% if (not time.cadastros_encerrados) or perfil == 'admin' %}
+    {% if perfil == 'admin' or (perfil == 'lider' and time.lider_id == current_user.id) %}
+        <a href="{{ url_for('editar_time', token=time.token) }}" class="btn btn-warning mb-3">Editar Time</a>
+
+        {% if not time.jogadores %}
+        <div class="alert alert-light text-center" role="alert">
+            Nenhum jogador cadastrado para este time ainda.
+        </div>
+        {% endif %}
+
+    {% endif %}
 {% else %}
-  {% if time.cadastros_encerrados %}
     <div class="alert alert-warning">Cadastros e edições para este time foram encerrados.</div>
-  {% else %}
-    <div class="alert alert-warning">Prazo para edição expirado.</div>
-  {% endif %}
 {% endif %}
 
 <h3>Jogadores</h3>
 {% if time.jogadores %}
 <table class="table table-striped">
-  <thead>
+    <thead>
     <tr>
-      <th>Foto</th>
-      <th>Nome Completo</th>
-      <th>CPF</th>
-      <th>RG</th>
-      <th>Data de Nascimento</th>
-      <th>Adventista?</th>
-      <th>Capitão?</th>
-      <th>Foto ID</th>
-      <th>Ações</th>
+        <th>Foto</th>
+        <th>Nome Completo</th>
+        <th>CPF</th>
+        <th>RG</th>
+        <th>Data de Nascimento</th>
+        <th>Adventista?</th>
+        <th>Capitão?</th>
+        <th>Foto ID</th>
+        <th>Ações</th>
     </tr>
-  </thead>
-  <tbody>
+    </thead>
+    <tbody>
     {% for jogador in time.jogadores %}
     <tr>
-      <td>
-        {% if jogador.foto %}
-          <img src="{{ url_for('static', filename='uploads/' ~ jogador.foto) }}" alt="Foto" width="80" />
-        {% else %}
-          Sem foto
-        {% endif %}
-      </td>
-      <td>{{ jogador.nome_completo }}</td>
-      <td>{{ jogador.cpf }}</td>
-      <td>{{ jogador.rg }}</td>
-      <td>{{ jogador.data_nascimento.strftime('%d/%m/%Y') if jogador.data_nascimento else '' }}</td>
-      <td>{{ 'Sim' if jogador.is_adventista else 'Não' }}</td>
-      <td>{{ 'Sim' if jogador.is_capitao else 'Não' }}</td>
-      <td>
-        {% if jogador.foto_identidade %}
-          <a href="{{ url_for('static', filename='uploads/' + jogador.foto_identidade) }}" target="_blank">Ver</a>
-        {% else %}
-          Não
-        {% endif %}
-      </td>
-      <td>
-        {% if (time.data_limite_edicao > now and not time.cadastros_encerrados) or perfil == 'admin' %}
-          {% if perfil == 'admin' or (perfil == 'lider' and time.lider_id == current_user.id) %}
-            <a href="{{ url_for('editar_jogador', jogador_id=jogador.id) }}" class="btn btn-sm btn-primary">Editar</a>
-            <form action="{{ url_for('excluir_jogador', jogador_id=jogador.id) }}" method="POST" style="display:inline;" onsubmit="return confirm('Confirma exclusão do jogador?');">
-              <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
-            </form>
-          {% endif %}
-        {% endif %}
-      </td>
+        <td>
+                <img src="{{ jogador.foto or url_for('static', filename='img/default_logo.png') }}"
+                     alt="Foto do jogador" class="img-thumbnail-tabela">
+            </td>
+        <td>{{ jogador.nome_completo }}</td>
+        <td>{{ jogador.cpf }}</td>
+        <td>{{ jogador.rg }}</td>
+        <td>{{ jogador.data_nascimento.strftime('%d/%m/%Y') if jogador.data_nascimento else '' }}</td>
+        <td>{{ 'Sim' if jogador.is_adventista else 'Não' }}</td>
+        <td>{{ 'Sim' if jogador.is_capitao else 'Não' }}</td>
+        <td>
+            {% if jogador.foto_identidade %}
+            <a href="{{ jogador.foto_identidade }}" target="_blank">Ver</a>
+            {% else %}
+            Não
+            {% endif %}
+        </td>
+        <td>
+            {% if (not time.cadastros_encerrados) or perfil == 'admin' %}
+                {% if perfil == 'admin' or (perfil == 'lider' and time.lider_id == current_user.id) %}
+                <a href="{{ url_for('editar_jogador', jogador_id=jogador.id) }}" class="btn btn-sm btn-primary">Editar</a>
+                <form action="{{ url_for('excluir_jogador', jogador_id=jogador.id) }}" method="POST" style="display:inline;"
+                      onsubmit="return confirm('Confirma exclusão do jogador?');">
+                    <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+                </form>
+                {% endif %}
+            {% endif %}
+        </td>
     </tr>
     {% endfor %}
-  </tbody>
+    </tbody>
 </table>
 {% else %}
-<p>Sem jogadores cadastrados.</p>
+    <p>Sem jogadores cadastrados.</p>
 {% endif %}
+
+  {% if (not time.cadastros_encerrados) or perfil == 'admin' %}
+    {% if perfil == 'admin' or (perfil == 'lider' and time.lider_id == current_user.id) %}
+        <a href="{{ url_for('cadastro_jogador', token=time.token) }}" class="btn btn-success mt-3">Adicionar Novo Jogador</a>
+    {% endif %}
+  {% endif %}
 {% endblock %}

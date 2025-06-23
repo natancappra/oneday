@@ -11,7 +11,10 @@
     <label for="password" class="form-label">Senha</label>
     <input type="password" class="form-control" id="password" name="password" required />
   </div>
-  <button type="submit" class="btn btn-primary">Entrar</button>
+  <button type="submit" class="btn btn-primary">Login</button>
+<div class="mt-3">
+    <a href="{{ url_for('request_reset') }}">Esqueceu a senha?</a>
+</div>
 </form>
 <p class="mt-3">Não tem conta? <a href="{{ url_for('signup') }}">Cadastre-se aqui</a>.</p>
 {% endblock %}

@@ -1,47 +1,223 @@
 {% extends 'base.html' %}
 {% block title %}Editar Jogador - {{ jogador.nome_completo }}{% endblock %}
+
+{% block extra_head %}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+<style>
+    .img-container { max-width: 100%; height: 400px; margin-top: 1rem; background-color: #f7f7f7; border: 1px dashed #ddd; }
+    .preview-container { width: 150px; height: 150px; overflow: hidden; border: 2px solid #ddd; border-radius: 50%; }
+</style>
+{% endblock %}
+
 {% block content %}
-<h2>Editar Jogador: {{ jogador.nome_completo }}</h2>
-<form method="POST" enctype="multipart/form-data" novalidate>
-  <div class="mb-3">
-    <label for="foto" class="form-label">Foto do Jogador</label>
-    {% if jogador.foto %}
-      <div><img src="{{ url_for('static', filename='uploads/' + jogador.foto) }}" alt="Foto" width="120"></div>
-    {% endif %}
-    <input class="form-control" type="file" id="foto" name="foto" accept="image/*" />
-  </div>
-  <div class="mb-3">
-    <label for="nome_completo" class="form-label">Nome Completo</label>
-    <input type="text" class="form-control" id="nome_completo" name="nome_completo" value="{{ jogador.nome_completo }}" required />
-  </div>
-  <div class="mb-3">
-    <label for="cpf" class="form-label">CPF</label>
-    <input type="text" class="form-control" id="cpf" name="cpf" value="{{ jogador.cpf if jogador.cpf else '' }}" />
-  </div>
-  <div class="mb-3">
-    <label for="rg" class="form-label">RG</label>
-    <input type="text" class="form-control" id="rg" name="rg" value="{{ jogador.rg if jogador.rg else '' }}" />
-  </div>
-  <div class="mb-3">
-    <label for="data_nascimento" class="form-label">Data de Nascimento</label>
-    <input type="date" class="form-control" id="data_nascimento" name="data_nascimento" value="{{ jogador.data_nascimento.strftime('%Y-%m-%d') if jogador.data_nascimento else '' }}" />
-  </div>
-  <div class="mb-3 form-check">
-    <input type="checkbox" class="form-check-input" id="is_adventista" name="is_adventista" {% if jogador.is_adventista %}checked{% endif %} />
-    <label class="form-check-label" for="is_adventista">É Adventista?</label>
-  </div>
-  <div class="mb-3">
-    <label for="foto_identidade" class="form-label">Foto da Identidade</label>
-    {% if jogador.foto_identidade %}
-      <div><a href="{{ url_for('static', filename='uploads/' + jogador.foto_identidade) }}" target="_blank"><img src="{{ url_for('static', filename='uploads/' + jogador.foto_identidade) }}" alt="Foto ID" width="120"></a></div>
-    {% endif %}
-    <input class="form-control" type="file" id="foto_identidade" name="foto_identidade" accept="image/*" />
-  </div>
-  <div class="mb-3 form-check">
-    <input type="checkbox" class="form-check-input" id="is_capitao" name="is_capitao" {% if jogador.is_capitao %}checked{% endif %} />
-    <label class="form-check-label" for="is_capitao">É Capitão?</label>
-  </div>
-  <button type="submit" class="btn btn-primary">Salvar Alterações</button>
-  <a href="{{ url_for('ver_time', time_id=jogador.time_id) }}" class="btn btn-secondary">Cancelar</a>
-</form>
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <h2 class="titulo-pagina">Editar Jogador: {{ jogador.nome_completo }}</h2>
+        <form id="edit-jogador-form" method="POST" enctype="multipart/form-data" novalidate>
+            <div class="mb-3"><label for="nome_completo" class="form-label fw-bold">Nome Completo*</label><input
+                    type="text" class="form-control" id="nome_completo" name="nome_completo"
+                    value="{{ jogador.nome_completo }}" required/></div>
+            <div class="mb-3"><label for="telefone" class="form-label fw-bold">Telefone*</label><input type="text"
+                                                                                                       class="form-control"
+                                                                                                       id="telefone"
+                                                                                                       name="telefone"
+                                                                                                       value="{{ jogador.telefone or '' }}"
+                                                                                                       required/></div>
+            <div class="mb-3"><label for="cpf" class="form-label fw-bold">CPF</label><input type="text"
+                                                                                            class="form-control"
+                                                                                            id="cpf" name="cpf"
+                                                                                            value="{{ jogador.cpf or '' }}"/>
+            </div>
+            <div class="mb-3"><label for="rg" class="form-label fw-bold">RG</label><input type="text"
+                                                                                          class="form-control" id="rg"
+                                                                                          name="rg"
+                                                                                          value="{{ jogador.rg or '' }}"/>
+            </div>
+            <div class="mb-3">
+                <label for="data_nascimento" class="form-label fw-bold">Data de Nascimento</label>
+                <input type="date" class="form-control" id="data_nascimento" name="data_nascimento"
+                       value="{{ jogador.data_nascimento.strftime('%Y-%m-%d') if jogador.data_nascimento else '' }}"/>
+                <small id="idade-error" class="form-text text-danger fw-bold"></small>
+            </div>
+            <div class="mb-3 form-check"><input type="checkbox" class="form-check-input" id="is_adventista"
+                                                name="is_adventista" {% if jogador.is_adventista %}checked{% endif
+                                                %}/><label class="form-check-label" for="is_adventista">É
+                Adventista?</label></div>
+            <div class="mb-3 form-check"><input type="checkbox" class="form-check-input" id="is_capitao"
+                                                name="is_capitao" {% if jogador.is_capitao %}checked{% endif %}/><label
+                    class="form-check-label" for="is_capitao">É Capitão?</label></div>
+            <hr>
+            <h4 class="mb-3">Documentos</h4>
+            <div class="mb-3"><label class="form-label d-block">Foto Atual:</label><img
+                    src="{{ jogador.foto or url_for('static', filename='img/default_logo.png') }}" alt="Foto do Jogador"
+                    class="img-preview-pagina mb-2"></div>
+            <div class="mb-3"><label for="fotoInput" class="form-label">Trocar Foto (opcional):</label><input
+                    class="form-control" type="file" id="fotoInput" name="foto_original" accept="image/*"/></div>
+            <div id="cropper-container" class="mt-4" style="display:none;">
+                <div class="row">
+                    <div class="col-md-8"><p><strong>Ajuste a nova foto:</strong></p>
+                        <div class="img-container"><img id="image-to-crop"></div>
+                    </div>
+                    <div class="col-md-4"><p><strong>Pré-visualização:</strong></p>
+                        <div class="preview-container"></div>
+                    </div>
+                </div>
+                <button type="button" id="confirm-crop-btn" class="btn btn-success mt-3">Confirmar Recorte</button>
+            </div>
+            <div id="crop-success-message" class="alert alert-success" style="display: none;">✅ Nova foto pronta para o
+                envio!
+            </div>
+            <div class="mb-3 mt-3"><label class="form-label">Foto da Identidade Atual:</label>{% if
+                jogador.foto_identidade %}
+                <div><a href="{{ jogador.foto_identidade }}" target="_blank"><img src="{{ jogador.foto_identidade }}"
+                                                                                  alt="Foto ID"
+                                                                                  class="img-preview-pagina"></a></div>
+                {% else %}<p class="text-muted fst-italic">Nenhum documento enviado.</p>{% endif %}
+            </div>
+            <div class="mb-3"><label for="foto_identidade_input" class="form-label">Trocar Foto da
+                Identidade:</label><input class="form-control" type="file" id="foto_identidade_input"
+                                          name="foto_identidade" accept="image/*"/></div>
+            <hr>
+            <button type="submit" id="submit-button" class="btn btn-primary">Salvar Alterações</button>
+            <a href="{{ url_for('ver_time', time_id=jogador.time_id) }}" class="btn btn-secondary">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
+<script>
+    // Script do Cortador de Imagem (adaptado para a página de edição)
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('edit-jogador-form');
+        const imageInput = document.getElementById('fotoInput');
+        if (!form || !imageInput) return;
+
+        const imageToCrop = document.getElementById('image-to-crop');
+        const cropperContainer = document.getElementById('cropper-container');
+        const previewContainer = document.querySelector('.preview-container');
+        const confirmCropBtn = document.getElementById('confirm-crop-btn');
+        const successMessage = document.getElementById('crop-success-message');
+        const submitButton = form.querySelector('button[type="submit"]');
+        let cropper;
+        let croppedImageBlob = null;
+
+        imageInput.addEventListener('change', function (e) {
+            successMessage.style.display = 'none';
+            croppedImageBlob = null;
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    imageToCrop.src = event.target.result;
+                    cropperContainer.style.display = 'block';
+                    if (cropper) { cropper.destroy(); }
+                    cropper = new Cropper(imageToCrop, {
+                        aspectRatio: 1 / 1, viewMode: 1, preview: previewContainer
+                    });
+                };
+                reader.readAsDataURL(files[0]);
+            }
+        });
+
+        confirmCropBtn.addEventListener('click', function() {
+            if (cropper) {
+                cropper.getCroppedCanvas({ width: 512, height: 512 }).toBlob((blob) => {
+                    croppedImageBlob = blob;
+                    cropperContainer.style.display = 'none';
+                    successMessage.style.display = 'block';
+                    cropper.destroy();
+                    cropper = null;
+                }, 'image/png');
+            }
+        });
+
+        form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Salvando...`;
+
+    const formData = new FormData(form);
+    if (croppedImageBlob) {
+        formData.append('foto', croppedImageBlob, 'foto_perfil.png');
+    }
+    formData.delete('foto_original');
+
+    fetch(form.action, {
+        method: 'POST',
+        body: formData,
+    }).then(response => {
+        // --- CORREÇÃO APLICADA AQUI ---
+        // Se a resposta do servidor for um redirecionamento, segue para a nova URL.
+        if (response.ok && response.redirected) {
+            window.location.href = response.url;
+        } else {
+            // Se não, apenas recarrega a página (para ver mensagens de erro, por exemplo)
+            window.location.reload();
+        }
+    }).catch(error => {
+        console.error('Error:', error);
+        submitButton.disabled = false;
+        submitButton.innerHTML = 'Salvar Alterações';
+    });
+});
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const dataNascimentoInput = document.getElementById('data_nascimento');
+        const idadeErrorMsg = document.getElementById('idade-error');
+
+        // No contexto de edição, pegamos a modalidade do time do jogador
+        const modalidade = {{ jogador.time.modalidade|tojson }};
+
+        function validarIdade() {
+            const dataNascimentoStr = dataNascimentoInput.value;
+            if (!dataNascimentoStr) {
+                idadeErrorMsg.textContent = '';
+                return;
+            }
+
+            const dataNascimento = new Date(dataNascimentoStr);
+            const dataCampeonato = new Date('2025-06-23T12:00:00Z');
+
+            if (isNaN(dataNascimento.getTime())) {
+                idadeErrorMsg.textContent = '';
+                return;
+            }
+
+            let idade = dataCampeonato.getFullYear() - dataNascimento.getFullYear();
+            const m = dataCampeonato.getMonth() - dataNascimento.getMonth();
+            if (m < 0 || (m === 0 && dataCampeonato.getDate() < dataNascimento.getDate())) {
+                idade--;
+            }
+
+            let errorMessage = '';
+            if (modalidade === 'Futebol Masculino') {
+                if (idade < 15 || idade > 35) {
+                    errorMessage = 'Idade inválida. Deve ter entre 15 e 35 anos.';
+                }
+            } else if (modalidade === 'Futebol Feminino' || modalidade === 'Vôlei Misto') {
+                if (idade < 15) {
+                    errorMessage = 'Idade inválida. Deve ter no mínimo 15 anos.';
+                }
+            }
+
+            idadeErrorMsg.textContent = errorMessage;
+        }
+
+        if (dataNascimentoInput) {
+            // Adiciona o listener para quando o usuário digita/muda a data
+            dataNascimentoInput.addEventListener('input', validarIdade);
+            // Executa a validação uma vez quando a página carrega, para o caso de já ter uma data inválida
+            validarIdade();
+        }
+    });
+    </script>
+
 {% endblock %}

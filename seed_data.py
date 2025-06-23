@@ -1,9 +1,7 @@
-# seed_data.py - VERSÃO FINAL (COM PAGAMENTO AUTOMÁTICO PARA TESTES)
-
 from app import app, db
 from models import Time, User
+from datetime import datetime, timedelta, date, timezone
 import random
-
 
 def popular_banco():
     """
@@ -46,8 +44,7 @@ def popular_banco():
                         regiao=f"Região {random.randint(1, 8)}",
                         distrito=f"Distrito {random.choice(['Norte', 'Sul', 'Leste', 'Oeste'])}",
                         lider_id=lider_padrao.id,
-                        # <<< AJUSTE FINAL: MARCAR O TIME COMO PAGO >>>
-                        pagou=True
+                        pagou=True,
                     )
                     db.session.add(novo_time)
                     times_criados += 1
@@ -62,7 +59,6 @@ def popular_banco():
             print("\nNenhum time novo foi criado, todos já estavam no banco.")
 
         print("--- Script finalizado ---")
-
 
 if __name__ == '__main__':
     popular_banco()

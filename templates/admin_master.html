@@ -49,7 +49,6 @@
             </div>
 
             <a href="{{ url_for('portal') }}" class="btn btn-outline-secondary" target="_blank">Ver Portal Público</a>
-
         </div>
     </div>
 </div>
@@ -61,27 +60,35 @@
     <div class="card-body">
         <form action="{{ url_for('config_quadras') }}" method="POST">
             <div class="row g-3 align-items-center">
-                <div class="col-auto">
-                    <label for="num_quadras_fut_masc" class="col-form-label">Quadras Fut. Masculino:</label>
-                </div>
-                <div class="col-auto">
-                    <input type="number" id="num_quadras_fut_masc" name="num_quadras_fut_masc" class="form-control" value="{{ config.num_quadras_fut_masc or 0 }}" min="0">
-                </div>
-                <div class="col-auto">
-                    <label for="num_quadras_fut_fem" class="col-form-label">Quadras Fut. Feminino:</label>
-                </div>
-                <div class="col-auto">
-                    <input type="number" id="num_quadras_fut_fem" name="num_quadras_fut_fem" class="form-control" value="{{ config.num_quadras_fut_fem or 0 }}" min="0">
-                </div>
-                <div class="col-auto">
-                    <label for="num_quadras_volei_misto" class="col-form-label">Quadras Vôlei Misto:</label>
-                </div>
-                <div class="col-auto">
-                    <input type="number" id="num_quadras_volei_misto" name="num_quadras_volei_misto" class="form-control" value="{{ config.num_quadras_volei_misto or 0 }}" min="0">
-                </div>
-                <div class="col-auto">
-                    <button type="submit" class="btn btn-success">Salvar Configurações</button>
-                </div>
+                <div class="col-auto"><label for="num_quadras_fut_masc" class="col-form-label">Quadras Fut. Masculino:</label></div>
+                <div class="col-auto"><input type="number" id="num_quadras_fut_masc" name="num_quadras_fut_masc" class="form-control" value="{{ config.num_quadras_fut_masc or 0 }}" min="0"></div>
+                <div class="col-auto"><label for="num_quadras_fut_fem" class="col-form-label">Quadras Fut. Feminino:</label></div>
+                <div class="col-auto"><input type="number" id="num_quadras_fut_fem" name="num_quadras_fut_fem" class="form-control" value="{{ config.num_quadras_fut_fem or 0 }}" min="0"></div>
+                <div class="col-auto"><label for="num_quadras_volei_misto" class="col-form-label">Quadras Vôlei Misto:</label></div>
+                <div class="col-auto"><input type="number" id="num_quadras_volei_misto" name="num_quadras_volei_misto" class="form-control" value="{{ config.num_quadras_volei_misto or 0 }}" min="0"></div>
+                <div class="col-auto"><button type="submit" class="btn btn-success">Salvar Configurações</button></div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        Configuração de Limites (Não Adventistas)
+    </div>
+    <div class="card-body">
+        <form action="{{ url_for('config_limites') }}" method="POST">
+            <div class="row g-3 align-items-center">
+                <div class="col-auto"><label for="limite_fut_masc" class="col-form-label">Fut. Masculino:</label></div>
+                <div class="col-auto"><input type="number" id="limite_fut_masc" name="limite_nao_adv_fut_masc" class="form-control" value="{{ config.limite_nao_adv_fut_masc or 1 }}" min="0"></div>
+
+                <div class="col-auto"><label for="limite_fut_fem" class="col-form-label">Fut. Feminino:</label></div>
+                <div class="col-auto"><input type="number" id="limite_fut_fem" name="limite_nao_adv_fut_fem" class="form-control" value="{{ config.limite_nao_adv_fut_fem or 2 }}" min="0"></div>
+
+                <div class="col-auto"><label for="limite_volei" class="col-form-label">Vôlei Misto:</label></div>
+                <div class="col-auto"><input type="number" id="limite_volei" name="limite_nao_adv_volei_misto" class="form-control" value="{{ config.limite_nao_adv_volei_misto or 1 }}" min="0"></div>
+
+                <div class="col-auto"><button type="submit" class="btn btn-success">Salvar Limites</button></div>
             </div>
         </form>
     </div>
@@ -98,7 +105,6 @@
                     <th>Nome da Igreja/Time</th>
                     <th>Modalidade</th>
                     <th>Pagamento</th>
-                    <th>Cadastros Encerrados?</th>
                     <th>Ações</th>
                 </tr>
             </thead>
@@ -108,32 +114,25 @@
                     <td>{{ time.nome_igreja }}</td>
                     <td>{{ time.modalidade }}</td>
                     <td><span class="badge bg-{{'success' if time.pagou else 'danger'}}">{{ 'Pago' if time.pagou else 'Pendente' }}</span></td>
-                    <td><span class="badge bg-{{'secondary' if time.cadastros_encerrados else 'primary'}}">{{ 'Sim' if time.cadastros_encerrados else 'Não' }}</span></td>
                     <td>
                         <a href="{{ url_for('admin_config_time', time_id=time.id) }}" class="btn btn-sm btn-outline-primary">Configurar Time</a>
                     </td>
                 </tr>
                 {% else %}
-                <tr>
-                    <td colspan="5" class="text-center">Nenhum time cadastrado ainda.</td>
-                </tr>
+                <tr><td colspan="4" class="text-center">Nenhum time cadastrado ainda.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
     <div class="card-footer text-center">
-        <a href="{{ url_for('relatorio_excel') }}" class="btn btn-secondary">Gerar Relatório Completo em Excel</a>
+        <a href="{{ url_for('relatorio_excel') }}" class="btn btn-secondary">Gerar Relatório (Times e Jogadores)</a>
     </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
-    // Inicializa os tooltips do Bootstrap (para o botão desabilitado)
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl)
-    })
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) { return new bootstrap.Tooltip(tooltipTriggerEl) })
 </script>
 {% endblock %}

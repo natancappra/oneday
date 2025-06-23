@@ -1,118 +1,194 @@
 {% extends 'base.html' %}
 {% block title %}Editar Time - {{ time.nome_igreja }}{% endblock %}
+
+{% block extra_head %}
+{# Estilos para o cortador de imagem #}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+<style>
+    .img-container { max-width: 100%; height: 400px; margin-top: 1rem; background-color: #f7f7f7; border: 1px dashed #ddd; }
+    .preview-container { width: 100px; height: 100px; overflow: hidden; border: 2px solid #ddd; border-radius: 50%; }
+</style>
+{% endblock %}
+
 {% block content %}
-<h2 class="titulo-pagina">Editar Time: {{ time.nome_igreja }}e</h2>
-<form method="POST" enctype="multipart/form-data" novalidate>
-  <div class="mb-3">
-    <label for="nome_igreja" class="form-label">Nome da Igreja</label>
-    <input type="text" class="form-control" id="nome_igreja" name="nome_igreja" value="{{ time.nome_igreja }}" required />
-  </div>
-  <div class="mb-3">
-    <label for="diretor_jovem" class="form-label">Nome do Diretor Jovem</label>
-    <input type="text" class="form-control" id="diretor_jovem" name="diretor_jovem" value="{{ time.diretor_jovem if time.diretor_jovem else '' }}" required />
-  </div>
-  <div class="mb-3">
-    <label for="distrito" class="form-label">Distrito</label>
-    <input type="text" class="form-control" id="distrito" name="distrito" value="{{ time.distrito if time.distrito else '' }}" required />
-  </div>
-  <div class="mb-3">
-    <label for="regiao" class="form-label">Região</label>
-    <select class="form-control" id="regiao" name="regiao" required>
-      <option value="">Selecione a Região</option>
-      {% for opcao in regiao_opcoes %}
-        <option value="{{ opcao }}" {% if time.regiao == opcao %}selected{% endif %}>{{ opcao }}</option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="mb-3">
-    <label for="nome_base" class="form-label">Nome da Base</label>
-    <input type="text" class="form-control" id="nome_base" name="nome_base" value="{{ time.nome_base if time.nome_base else '' }}" required />
-  </div>
-  <div class="mb-3">
-    <label for="modalidade" class="form-label">Modalidade</label>
-    <select class="form-control" id="modalidade" name="modalidade" required>
-      <option value="Vôlei" {% if time.modalidade == 'Vôlei' %}selected{% endif %}>Vôlei</option>
-      <option value="Futebol" {% if time.modalidade == 'Futebol' %}selected{% endif %}>Futebol</option>
-    </select>
-  </div>
-  <div class="mb-3">
-    <label for="imagem" class="form-label">Imagem do Time</label>
-    {% if time.imagem %}
-      <div><img src="{{ url_for('static', filename='uploads/' + time.imagem) }}" alt="Imagem do Time" style="max-height:100px;"></div>
-    {% endif %}
-    <input type="file" class="form-control" id="imagem" name="imagem" accept="image/*" />
-  </div>
-  <div class="mb-3">
-    <label class="form-label">Link de Pagamento (Padrão)</label>
-    <p><a href="{{ LINK_PAGAMENTO_PADRAO }}" target="_blank">{{ LINK_PAGAMENTO_PADRAO }}</a></p>
-  </div>
-  <div class="mb-3 form-check d-flex align-items-center">
-    <input type="checkbox" class="form-check-input me-2" id="pagou" name="pagou" {% if time.pagou %}checked{% endif %} />
-    <label class="form-check-label" for="pagou" id="pagou-label">Já fez o pagamento? Se sim, selecione aqui e anexe o comprovante.</label>
-  </div>
-  <div class="mb-3" id="comprovante-upload">
-    <label for="comprovante_pagamento" class="form-label">Anexar Comprovante de Pagamento (Imagem/PDF)</label>
-    <input type="file" class="form-control" id="comprovante_pagamento" name="comprovante_pagamento" accept="image/*, application/pdf" />
-    {% if time.comprovante_pagamento %}
-      <small class="form-text text-muted">Comprovante atual: <a href="{{ url_for('static', filename='uploads/' + time.comprovante_pagamento) }}" target="_blank">Ver Comprovante</a></small>
-    {% endif %}
-  </div>
-  <button type="submit" class="btn btn-primary">Salvar Alterações</button>
-  <a href="{{ url_for('ver_time', time_id=time.id) }}" class="btn btn-secondary">Cancelar</a>
-</form>
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <h2 class="titulo-pagina">Editar Time: {{ time.nome_igreja }}</h2>
+
+        <form id="edit-time-form" method="POST" enctype="multipart/form-data" novalidate>
+            <div class="mb-3"><label for="nome_igreja" class="form-label">Nome da Igreja</label><input type="text"
+                                                                                                       class="form-control"
+                                                                                                       id="nome_igreja"
+                                                                                                       name="nome_igreja"
+                                                                                                       value="{{ time.nome_igreja }}"
+                                                                                                       required/></div>
+            <div class="mb-3"><label for="diretor_jovem" class="form-label">Nome do Diretor Jovem</label><input
+                    type="text" class="form-control" id="diretor_jovem" name="diretor_jovem"
+                    value="{{ time.diretor_jovem or '' }}" required/></div>
+            <div class="mb-3"><label for="distrito" class="form-label">Distrito</label><input type="text"
+                                                                                              class="form-control"
+                                                                                              id="distrito"
+                                                                                              name="distrito"
+                                                                                              value="{{ time.distrito or '' }}"
+                                                                                              required/></div>
+            <div class="mb-3"><label for="regiao" class="form-label">Região</label><select class="form-control"
+                                                                                           id="regiao" name="regiao"
+                                                                                           required>
+                <option value="">Selecione a Região</option>
+                {% for opcao in regiao_opcoes %}
+                <option value="{{ opcao }}" {% if time.regiao== opcao %}selected{% endif %}>{{ opcao }}</option>
+                {% endfor %}</select></div>
+            <div class="mb-3"><label for="nome_base" class="form-label">Nome da Base</label><input type="text"
+                                                                                                   class="form-control"
+                                                                                                   id="nome_base"
+                                                                                                   name="nome_base"
+                                                                                                   value="{{ time.nome_base or '' }}"
+                                                                                                   required/></div>
+            <div class="mb-3"><label for="modalidade" class="form-label">Modalidade</label><select class="form-select"
+                                                                                                   id="modalidade"
+                                                                                                   name="modalidade"
+                                                                                                   required>
+                <option value="Futebol Masculino" {% if time.modalidade and time.modalidade.strip()==
+                'Futebol Masculino' %}selected{% endif %}>Futebol Masculino</option>
+                <option value="Futebol Feminino" {% if time.modalidade and time.modalidade.strip()==
+                'Futebol Feminino' %}selected{% endif %}>Futebol Feminino</option>
+                <option value="Vôlei Misto" {% if time.modalidade and time.modalidade.strip()==
+                'Vôlei Misto' %}selected{% endif %}>Vôlei Misto</option></select></div>
+
+            <hr>
+            <h4 class="mb-3">Logo do Time</h4>
+            <div class="mb-3"><label class="form-label d-block">Logo Atual:</label><img
+                    <img src="{{ time.imagem or url_for('static', filename='img/default_logo.png') }}" alt="Logo do time" class="img-preview-form">
+            <div class="mb-3"><label for="logoInput" class="form-label">Trocar Logo (opcional)</label><input type="file"
+                                                                                                             class="form-control"
+                                                                                                             id="logoInput"
+                                                                                                             name="logo_original"
+                                                                                                             accept="image/*"/>
+            </div>
+            <div id="cropper-container" class="mt-4" style="display:none;">
+                <div class="row">
+                    <div class="col-md-8"><p><strong>Ajuste sua nova imagem:</strong></p>
+                        <div class="img-container"><img id="image-to-crop"></div>
+                    </div>
+                    <div class="col-md-4"><p><strong>Pré-visualização:</strong></p>
+                        <div class="preview-container"></div>
+                    </div>
+                </div>
+                <button type="button" id="confirm-crop-btn" class="btn btn-success mt-3">Confirmar Recorte</button>
+            </div>
+            <div id="crop-success-message" class="alert alert-success" style="display: none;">✅ Nova logo recortada e
+                pronta para o envio!
+            </div>
+
+            <hr>
+            <h4 class="mb-3">Pagamento</h4>
+            <div class="mb-3"><label class="form-label">Link de Pagamento (Padrão)</label>
+                <p><a href="{{ LINK_PAGAMENTO_PADRAO }}" target="_blank">{{ LINK_PAGAMENTO_PADRAO }}</a></p></div>
+            <div class="mb-3 form-check d-flex align-items-center"><input type="checkbox" class="form-check-input me-2"
+                                                                          id="pagou" name="pagou" {% if time.pagou
+                                                                          %}checked{% endif %}/><label
+                    class="form-check-label" for="pagou" id="pagou-label">Já fez o pagamento?</label></div>
+            <div class="mb-3" id="comprovante-upload"><label for="comprovante_pagamento" class="form-label">Anexar Novo
+                Comprovante</label><input type="file" class="form-control" id="comprovante_pagamento"
+                                          name="comprovante_pagamento" accept="image/*, application/pdf"/>{% if
+                time.comprovante_pagamento %}<small class="form-text text-muted">Comprovante atual: <a
+                        href="{{ time.comprovante_pagamento }}" target="_blank">Ver Comprovante</a></small>{% endif %}
+            </div>
+
+            <hr>
+            <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+            <a href="{{ url_for('ver_time', time_id=time.id) }}" class="btn btn-secondary">Cancelar</a>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+{{ super() }}
 <script>
-  document.addEventListener('DOMContentLoaded', function() {
-    const pagouCheckbox = document.getElementById('pagou');
-    const pagouLabel = document.getElementById('pagou-label');
-    const comprovanteUploadDiv = document.getElementById('comprovante-upload');
-
-    function updatePaymentStatusDisplay() {
-      if (pagouCheckbox.checked) {
-        pagouLabel.textContent = 'Pagamento Confirmado. Comprovante anexado (se houver).';
-        pagouLabel.style.color = 'green';
-        pagouLabel.style.fontWeight = 'bold';
-        comprovanteUploadDiv.style.display = 'block';
-      } else {
-        pagouLabel.textContent = 'Já fez o pagamento? Se sim, selecione aqui e anexe o comprovante.';
-        pagouLabel.style.color = 'red';
-        pagouLabel.style.fontWeight = 'bold';
-        comprovanteUploadDiv.style.display = 'none';
-      }
-    }
-
-    pagouCheckbox.addEventListener('change', updatePaymentStatusDisplay);
-
-    updatePaymentStatusDisplay();
-
-    let blinkInterval;
-
-    function startBlinking() {
-      if (!pagouCheckbox.checked) {
-        blinkInterval = setInterval(function() {
-          pagouLabel.style.opacity = (pagouLabel.style.opacity === '0.5') ? '1' : '0.5';
-        }, 800);
-      }
-    }
-
-    function stopBlinking() {
-      clearInterval(blinkInterval);
-      pagouLabel.style.opacity = '1';
-    }
-
-    pagouCheckbox.addEventListener('change', function() {
-      if (this.checked) {
-        stopBlinking();
-      } else {
-        startBlinking();
-      }
+    document.addEventListener('DOMContentLoaded', function() {
+        const pagouCheckbox = document.getElementById('pagou');
+        const pagouLabel = document.getElementById('pagou-label');
+        const comprovanteUploadDiv = document.getElementById('comprovante-upload');
+        function updatePaymentStatusDisplay() { if (pagouCheckbox.checked) { pagouLabel.textContent = 'Pagamento Confirmado.'; pagouLabel.style.color = 'green'; pagouLabel.style.fontWeight = 'bold'; comprovanteUploadDiv.style.display = 'block'; stopBlinking(); } else { pagouLabel.textContent = 'Já fez o pagamento? Se sim, selecione aqui e anexe o comprovante.'; pagouLabel.style.color = 'red'; pagouLabel.style.fontWeight = 'bold'; comprovanteUploadDiv.style.display = 'none'; startBlinking(); } }
+        if (pagouCheckbox) {
+            pagouCheckbox.addEventListener('change', updatePaymentStatusDisplay);
+            updatePaymentStatusDisplay();
+            let blinkInterval;
+            function startBlinking() { if (!pagouCheckbox.checked && !blinkInterval) { blinkInterval = setInterval(function() { pagouLabel.style.opacity = (pagouLabel.style.opacity === '0.5') ? '1' : '0.5'; }, 800); } }
+            function stopBlinking() { clearInterval(blinkInterval); blinkInterval = null; if(pagouLabel) pagouLabel.style.opacity = '1'; }
+            if (!pagouCheckbox.checked) { startBlinking(); }
+        }
     });
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const form = document.getElementById('edit-time-form');
+        const imageInput = document.getElementById('logoInput');
+        const nomeDoArquivoEnviado = 'imagem';
+        if (!form || !imageInput) return;
+        const imageToCrop = document.getElementById('image-to-crop');
+        const cropperContainer = document.getElementById('cropper-container');
+        const previewContainer = document.querySelector('.preview-container');
+        const confirmCropBtn = document.getElementById('confirm-crop-btn');
+        const successMessage = document.getElementById('crop-success-message');
+        const submitButton = form.querySelector('button[type="submit"]');
+        let cropper;
+        let croppedImageBlob = null;
 
-    if (!pagouCheckbox.checked) {
-        startBlinking();
+        imageInput.addEventListener('change', function (e) {
+            successMessage.style.display = 'none'; croppedImageBlob = null;
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                const reader = new FileReader();
+                reader.onload = function (event) {
+                    imageToCrop.src = event.target.result; cropperContainer.style.display = 'block';
+                    if (cropper) { cropper.destroy(); }
+                    cropper = new Cropper(imageToCrop, { aspectRatio: 1 / 1, viewMode: 1, preview: previewContainer });
+                };
+                reader.readAsDataURL(files[0]);
+            }
+        });
+        confirmCropBtn.addEventListener('click', function() {
+            if (cropper) {
+                cropper.getCroppedCanvas({ width: 512, height: 512 }).toBlob((blob) => {
+                    croppedImageBlob = blob; cropperContainer.style.display = 'none';
+                    successMessage.style.display = 'block';
+                    cropper.destroy(); cropper = null;
+                }, 'image/png');
+            }
+        });
+        form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Salvando...`;
+
+    const formData = new FormData(form);
+    if (croppedImageBlob) {
+        formData.append('imagem', croppedImageBlob, 'logo.png');
     }
-  });
+    formData.delete('logo_original');
+
+    fetch(form.action, {
+        method: 'POST',
+        body: formData,
+    })
+    .then(response => {
+        // --- CORREÇÃO APLICADA AQUI ---
+        // Se a resposta do servidor for um redirecionamento, o JS obedece e vai para a nova URL.
+        if (response.ok && response.redirected) {
+            window.location.href = response.url;
+        } else {
+            // Se não houver redirect, apenas recarrega a página (útil para ver mensagens de erro)
+            window.location.reload();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        submitButton.disabled = false;
+        submitButton.innerHTML = 'Salvar Alterações';
+    });
 </script>
 {% endblock %}

@@ -10,7 +10,6 @@
 {% if grupos %}
     <h3 class="mt-4">Fase de Grupos</h3>
     <div class="row row-cols-1 row-cols-md-2 g-4">
-        {# ... (o código da tabela de classificação continua aqui, sem alterações) ... #}
         {% for grupo in grupos %}
         <div class="col">
             <div class="card h-100">
@@ -20,22 +19,13 @@
                         <table class="table table-striped table-sm mb-0">
                             <thead class="table-dark">
                                 <tr>
-                                    <th scope="col">#</th>
-                                    <th scope="col">Time</th>
-                                    <th scope="col" title="Pontos">P</th>
-                                    <th scope="col" title="Jogos">J</th>
-                                    <th scope="col" title="Vitórias">V</th>
-                                    <th scope="col" title="Empates">E</th>
-                                    <th scope="col" title="Derrotas">D</th>
-                                    <th scope="col" title="Gols Pró">GP</th>
-                                    <th scope="col" title="Gols Contra">GC</th>
-                                    <th scope="col" title="Saldo de Gols">SG</th>
+                                    <th>#</th><th>Time</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for classificacao in grupo.classificacao_ordenada %}
                                 <tr>
-                                    <th scope="row">{{ loop.index }}</th>
+                                    <th>{{ loop.index }}</th>
                                     <td>{{ classificacao.time.nome_igreja }}</td>
                                     <td><strong>{{ classificacao.pontos }}</strong></td>
                                     <td>{{ classificacao.jogos_disputados }}</td>
@@ -55,14 +45,13 @@
         </div>
         {% endfor %}
     </div>
-    <div class="text-muted text-center mt-3"><small><b>P:</b> Pontos | <b>J:</b> Jogos | <b>V:</b> Vitórias | <b>E:</b> Empates | <b>D:</b> Derrotas | <b>GP:</b> Gols Pró | <b>GC:</b> Gols Contra | <b>SG:</b> Saldo de Gols</small></div>
 {% endif %}
 
 {% if tem_fase_final %}
     <hr class="my-5">
     <h3 class="mt-4 text-center">Chaveamento da Fase Final</h3>
     <div class="chaveamento-container">
-        <div id="chaveamento-grafico"></div>
+        <div id="chaveamento-grafico-publico"></div>
     </div>
 {% elif not grupos %}
     <div class="text-center p-5 border rounded bg-light">
@@ -74,53 +63,48 @@
 <div class="podio-container text-center">
     <h3 class="mt-4 mb-5">Resultado Final do Campeonato</h3>
     <div class="row justify-content-center align-items-end">
-
         {% if vice_campeao %}
         <div class="col-md-4 col-lg-3 order-md-1">
             <div class="podio-card prata">
                 <div class="podio-posicao">2º</div>
-                <img src="{{ url_for('static', filename='uploads/' + vice_campeao.imagem if vice_campeao.imagem else 'img/default_logo.png') }}" class="podio-img" alt="Logo {{ vice_campeao.nome_igreja }}">
+                <img src="{{ vice_campeao.imagem or url_for('static', filename='img/default_logo.png') }}" class="podio-img" alt="Logo {{ vice_campeao.nome_igreja }}">
                 <div class="podio-nome">{{ vice_campeao.nome_igreja }}</div>
             </div>
         </div>
         {% endif %}
-
         <div class="col-md-4 col-lg-3 order-md-2">
             <div class="podio-card ouro">
                 <div class="podio-posicao">🏆 1º 🏆</div>
-                <img src="{{ url_for('static', filename='uploads/' + campeao.imagem if campeao.imagem else 'img/default_logo.png') }}" class="podio-img" alt="Logo {{ campeao.nome_igreja }}">
+                <img src="{{ campeao.imagem or url_for('static', filename='img/default_logo.png') }}" class="podio-img" alt="Logo {{ campeao.nome_igreja }}">
                 <div class="podio-nome">{{ campeao.nome_igreja }}</div>
             </div>
         </div>
-
         {% if terceiro_lugar %}
         <div class="col-md-4 col-lg-3 order-md-3">
             <div class="podio-card bronze">
                 <div class="podio-posicao">3º</div>
-                <img src="{{ url_for('static', filename='uploads/' + terceiro_lugar.imagem if terceiro_lugar.imagem else 'img/default_logo.png') }}" class="podio-img" alt="Logo {{ terceiro_lugar.nome_igreja }}">
+                <img src="{{ terceiro_lugar.imagem or url_for('static', filename='img/default_logo.png') }}" class="podio-img" alt="Logo {{ terceiro_lugar.nome_igreja }}">
                 <div class="podio-nome">{{ terceiro_lugar.nome_igreja }}</div>
             </div>
         </div>
         {% endif %}
-
     </div>
 </div>
 {% endif %}
-
 {% endblock %}
 
 
 {% block scripts %}
-{# ... (o bloco de scripts do chaveamento continua aqui, sem alterações) ... #}
 {% if tem_fase_final %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.js"></script>
 <script>
     $(function() {
+        var bracketContainer = $('#chaveamento-grafico-publico');
         $.getJSON('/api/dados_mata_mata/' + "{{ modalidade }}", function(data) {
             if (data && data.teams && data.teams.length > 0) {
-                $('#chaveamento-grafico').empty().bracket({
+                bracketContainer.empty().bracket({
                     init: data,
                     skipConsolationRound: true,
                     teamWidth: 200,
