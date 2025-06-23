@@ -18,6 +18,9 @@ import io
 import random
 import math
 import config
+from flask import (
+    Flask, request, render_template, redirect, url_for, flash, session
+)
 
 import pandas as pd
 
@@ -504,7 +507,9 @@ def cadastro_igreja():
             pagou=pagou,
             comprovante_pagamento=comprovante_url, # Salva a URL do comprovante
             diretor_jovem=diretor_jovem,
-            limite_nao_adventistas=0
+            limite_nao_adv_fut_masc=request.form.get('limite_nao_adv_fut_masc', type=int, default=1),
+            limite_nao_adv_fut_fem=request.form.get('limite_nao_adv_fut_fem', type=int, default=2),
+            limite_nao_adv_volei_misto=request.form.get('limite_nao_adv_volei_misto', type=int, default=1),
         )
         db.session.add(novo_time)
         db.session.commit()
