@@ -1,8 +1,8 @@
-"""Versao inicial completa
+"""Reset automatico com datetimes corretos
 
-Revision ID: 84360b264d77
+Revision ID: 856257a46e09
 Revises: 
-Create Date: 2025-06-18 15:43:59.189982
+Create Date: 2025-06-24 22:35:11.559750
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '84360b264d77'
+revision = '856257a46e09'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -50,16 +50,17 @@ def upgrade():
     sa.Column('nome_base', sa.String(length=100), nullable=True),
     sa.Column('modalidade', sa.String(length=50), nullable=False),
     sa.Column('token', sa.String(length=36), nullable=False),
-    sa.Column('data_limite_edicao', sa.DateTime(), nullable=False),
     sa.Column('lider_id', sa.Integer(), nullable=False),
-    sa.Column('imagem', sa.String(length=200), nullable=True),
+    sa.Column('imagem', sa.String(length=255), nullable=True),
     sa.Column('link_pagamento', sa.String(length=200), nullable=True),
     sa.Column('pagou', sa.Boolean(), nullable=True),
-    sa.Column('comprovante_pagamento', sa.String(length=200), nullable=True),
+    sa.Column('comprovante_pagamento', sa.String(length=255), nullable=True),
     sa.Column('diretor_jovem', sa.String(length=150), nullable=True),
     sa.Column('cadastros_encerrados', sa.Boolean(), nullable=True),
     sa.Column('chaveamento_json', sa.Text(), nullable=True),
-    sa.Column('limite_nao_adventistas', sa.Integer(), nullable=True),
+    sa.Column('limite_nao_adv_fut_masc', sa.Integer(), nullable=True),
+    sa.Column('limite_nao_adv_fut_fem', sa.Integer(), nullable=True),
+    sa.Column('limite_nao_adv_volei_misto', sa.Integer(), nullable=True),
     sa.Column('grupo_id', sa.Integer(), nullable=True),
     sa.ForeignKeyConstraint(['grupo_id'], ['grupo.id'], name=op.f('fk_time_grupo_id_grupo')),
     sa.ForeignKeyConstraint(['lider_id'], ['user.id'], name=op.f('fk_time_lider_id_user')),
@@ -105,14 +106,15 @@ def upgrade():
     )
     op.create_table('jogador',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('foto', sa.String(length=200), nullable=True),
+    sa.Column('foto', sa.String(length=255), nullable=True),
+    sa.Column('telefone', sa.String(length=20), nullable=False),
     sa.Column('nome_completo', sa.String(length=150), nullable=False),
     sa.Column('cpf', sa.String(length=20), nullable=True),
     sa.Column('rg', sa.String(length=20), nullable=True),
     sa.Column('data_nascimento', sa.Date(), nullable=True),
     sa.Column('time_id', sa.Integer(), nullable=False),
     sa.Column('is_adventista', sa.Boolean(), nullable=True),
-    sa.Column('foto_identidade', sa.String(length=200), nullable=True),
+    sa.Column('foto_identidade', sa.String(length=255), nullable=True),
     sa.Column('is_capitao', sa.Boolean(), nullable=True),
     sa.ForeignKeyConstraint(['time_id'], ['time.id'], name=op.f('fk_jogador_time_id_time')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_jogador'))

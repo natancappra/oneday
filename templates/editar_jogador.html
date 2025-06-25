@@ -14,38 +14,14 @@
     <div class="col-md-8">
         <h2 class="titulo-pagina">Editar Jogador: {{ jogador.nome_completo }}</h2>
         <form id="edit-jogador-form" method="POST" enctype="multipart/form-data" novalidate>
-            <div class="mb-3"><label for="nome_completo" class="form-label fw-bold">Nome Completo*</label><input
-                    type="text" class="form-control" id="nome_completo" name="nome_completo"
-                    value="{{ jogador.nome_completo }}" required/></div>
-            <div class="mb-3"><label for="telefone" class="form-label fw-bold">Telefone*</label><input type="text"
-                                                                                                       class="form-control"
-                                                                                                       id="telefone"
-                                                                                                       name="telefone"
-                                                                                                       value="{{ jogador.telefone or '' }}"
-                                                                                                       required/></div>
-            <div class="mb-3"><label for="cpf" class="form-label fw-bold">CPF</label><input type="text"
-                                                                                            class="form-control"
-                                                                                            id="cpf" name="cpf"
-                                                                                            value="{{ jogador.cpf or '' }}"/>
-            </div>
-            <div class="mb-3"><label for="rg" class="form-label fw-bold">RG</label><input type="text"
-                                                                                          class="form-control" id="rg"
-                                                                                          name="rg"
-                                                                                          value="{{ jogador.rg or '' }}"/>
-            </div>
-            <div class="mb-3">
-                <label for="data_nascimento" class="form-label fw-bold">Data de Nascimento</label>
-                <input type="date" class="form-control" id="data_nascimento" name="data_nascimento"
-                       value="{{ jogador.data_nascimento.strftime('%Y-%m-%d') if jogador.data_nascimento else '' }}"/>
-                <small id="idade-error" class="form-text text-danger fw-bold"></small>
-            </div>
-            <div class="mb-3 form-check"><input type="checkbox" class="form-check-input" id="is_adventista"
-                                                name="is_adventista" {% if jogador.is_adventista %}checked{% endif
-                                                %}/><label class="form-check-label" for="is_adventista">É
-                Adventista?</label></div>
-            <div class="mb-3 form-check"><input type="checkbox" class="form-check-input" id="is_capitao"
-                                                name="is_capitao" {% if jogador.is_capitao %}checked{% endif %}/><label
-                    class="form-check-label" for="is_capitao">É Capitão?</label></div>
+            <div class="mb-3"><label for="nome_completo" class="form-label fw-bold">Nome Completo*</label><input type="text" class="form-control" id="nome_completo" name="nome_completo" value="{{ form_data.get('nome_completo', jogador.nome_completo) }}" required /></div>
+            <div class="mb-3"><label for="telefone" class="form-label fw-bold">Telefone*</label><input type="text" class="form-control" id="telefone" name="telefone" value="{{ form_data.get('telefone', jogador.telefone or '') }}" required /></div>
+            <div class="mb-3"><label for="cpf" class="form-label fw-bold">CPF</label><input type="text" class="form-control" id="cpf" name="cpf" value="{{ form_data.get('cpf', jogador.cpf or '') }}" /></div>
+            <div class="mb-3"><label for="rg" class="form-label fw-bold">RG</label><input type="text" class="form-control" id="rg" name="rg" value="{{ form_data.get('rg', jogador.rg or '') }}" /></div>
+            <div class="mb-3"><label for="data_nascimento" class="form-label fw-bold">Data de Nascimento</label><input type="date" class="form-control" id="data_nascimento" name="data_nascimento" value="{{ form_data.get('data_nascimento', jogador.data_nascimento.strftime('%Y-%m-%d') if jogador.data_nascimento else '') }}" /></div>
+            <div class="mb-3 form-check"><input type="checkbox" class="form-check-input" id="is_adventista" name="is_adventista" {% if form_data %}{% if 'is_adventista' in form_data %}checked{% endif %}{% elif jogador.is_adventista %}checked{% endif %} /><label class="form-check-label" for="is_adventista">É Adventista?</label></div>
+            <div class="mb-3 form-check"><input type="checkbox" class="form-check-input" id="is_capitao" name="is_capitao" {% if form_data %}{% if 'is_capitao' in form_data %}checked{% endif %}{% elif jogador.is_capitao %}checked{% endif %} /><label class="form-check-label" for="is_capitao">É Capitão?</label></div>
+
             <hr>
             <h4 class="mb-3">Documentos</h4>
             <div class="mb-3"><label class="form-label d-block">Foto Atual:</label><img
@@ -90,85 +66,131 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
 <script>
-    // Script do Cortador de Imagem (adaptado para a página de edição)
-    document.addEventListener('DOMContentLoaded', function () {
+    // ESTE É O NOVO BLOCO DE CÓDIGO DA FUNÇÃO attachFormListeners E SUA CHAMADA
+    function attachFormListeners() {
         const form = document.getElementById('edit-jogador-form');
         const imageInput = document.getElementById('fotoInput');
-        if (!form || !imageInput) return;
-
+        // Esses elementos podem não existir na primeira carga, então verificamos
         const imageToCrop = document.getElementById('image-to-crop');
         const cropperContainer = document.getElementById('cropper-container');
         const previewContainer = document.querySelector('.preview-container');
         const confirmCropBtn = document.getElementById('confirm-crop-btn');
         const successMessage = document.getElementById('crop-success-message');
-        const submitButton = form.querySelector('button[type="submit"]');
+        const submitButton = form ? form.querySelector('button[type="submit"]') : null; // Verifica se o form existe
+
         let cropper;
         let croppedImageBlob = null;
 
-        imageInput.addEventListener('change', function (e) {
-            successMessage.style.display = 'none';
+        // Limpa listeners antigos para evitar duplicação
+        if (imageInput) imageInput.removeEventListener('change', imageInputChangeHandler);
+        if (confirmCropBtn) confirmCropBtn.removeEventListener('click', confirmCropBtnHandler);
+        if (form) form.removeEventListener('submit', formSubmitHandler);
+
+        // Re-anexa os listeners
+        if (imageInput) imageInput.addEventListener('change', imageInputChangeHandler);
+        if (confirmCropBtn) confirmCropBtn.addEventListener('click', confirmCropBtnHandler);
+        if (form) form.addEventListener('submit', formSubmitHandler);
+
+        // Handlers de evento para evitar duplicação (funções nomeadas)
+        function imageInputChangeHandler(e) {
+            if (successMessage) successMessage.style.display = 'none';
             croppedImageBlob = null;
             const files = e.target.files;
             if (files && files.length > 0) {
                 const reader = new FileReader();
                 reader.onload = function (event) {
-                    imageToCrop.src = event.target.result;
-                    cropperContainer.style.display = 'block';
+                    if (imageToCrop) imageToCrop.src = event.target.result;
+                    if (cropperContainer) cropperContainer.style.display = 'block';
                     if (cropper) { cropper.destroy(); }
-                    cropper = new Cropper(imageToCrop, {
-                        aspectRatio: 1 / 1, viewMode: 1, preview: previewContainer
-                    });
+                    if (imageToCrop && previewContainer) { // Garante que elementos existem antes de criar Cropper
+                        cropper = new Cropper(imageToCrop, {
+                            aspectRatio: 1 / 1, viewMode: 1, preview: previewContainer
+                        });
+                    }
                 };
                 reader.readAsDataURL(files[0]);
             }
-        });
+        }
 
-        confirmCropBtn.addEventListener('click', function() {
+        function confirmCropBtnHandler() {
             if (cropper) {
                 cropper.getCroppedCanvas({ width: 512, height: 512 }).toBlob((blob) => {
                     croppedImageBlob = blob;
-                    cropperContainer.style.display = 'none';
-                    successMessage.style.display = 'block';
+                    if (cropperContainer) cropperContainer.style.display = 'none';
+                    if (successMessage) successMessage.style.display = 'block';
                     cropper.destroy();
                     cropper = null;
                 }, 'image/png');
             }
-        });
-
-        form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    const submitButton = form.querySelector('button[type="submit"]');
-    submitButton.disabled = true;
-    submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Salvando...`;
-
-    const formData = new FormData(form);
-    if (croppedImageBlob) {
-        formData.append('foto', croppedImageBlob, 'foto_perfil.png');
-    }
-    formData.delete('foto_original');
-
-    fetch(form.action, {
-        method: 'POST',
-        body: formData,
-    }).then(response => {
-        // --- CORREÇÃO APLICADA AQUI ---
-        // Se a resposta do servidor for um redirecionamento, segue para a nova URL.
-        if (response.ok && response.redirected) {
-            window.location.href = response.url;
-        } else {
-            // Se não, apenas recarrega a página (para ver mensagens de erro, por exemplo)
-            window.location.reload();
         }
-    }).catch(error => {
-        console.error('Error:', error);
-        submitButton.disabled = false;
-        submitButton.innerHTML = 'Salvar Alterações';
-    });
-});
-    });
+
+        function formSubmitHandler(e) {
+            e.preventDefault();
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Salvando...`;
+            }
+
+            const formData = new FormData(form);
+            if (croppedImageBlob) {
+                formData.append('foto', croppedImageBlob, 'foto_perfil.png');
+            }
+            formData.delete('foto_original');
+
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+            }).then(response => {
+                if (response.ok && response.redirected) {
+                    window.location.href = response.url;
+                } else if (response.status === 400) {
+                    return response.text();
+                } else {
+                    // Para outros erros HTTP inesperados
+                    window.location.reload();
+                }
+            }).then(html => {
+                if (html) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const newContent = doc.querySelector('.container-fluid') || doc.body;
+                    const currentContainer = document.querySelector('.container-fluid'); // Pega o container atual
+                    if (currentContainer) {
+                        currentContainer.innerHTML = newContent.innerHTML; // Substitui o HTML dentro do container
+                    }
+
+                    // Re-anexa todos os listeners aos novos elementos DOM
+                    attachFormListeners();
+
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = 'Salvar Alterações';
+                    }
+                    window.scrollTo(0, 0); // Rola para o topo para ver a mensagem
+
+                    const flashMessage = document.querySelector('.alert');
+                    if (flashMessage) {
+                        flashMessage.style.display = 'block'; // Garante que a mensagem é visível
+                        flashMessage.scrollIntoView({ behavior: 'smooth', block: 'start' }); // Rola para a mensagem
+                    }
+                }
+            }).catch(error => {
+                console.error('Error:', error);
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.innerHTML = 'Salvar Alterações';
+                }
+                alert('Ocorreu um erro inesperado. Por favor, tente novamente.');
+            });
+        }
+    }
+
+    // Chama a função attachFormListeners quando o DOM estiver completamente carregado
+    document.addEventListener('DOMContentLoaded', attachFormListeners);
 </script>
 
 <script>
+    // SEU SCRIPT DE VALIDAÇÃO DE IDADE, MANTIDO INTACTO AQUI
     document.addEventListener('DOMContentLoaded', function() {
         const dataNascimentoInput = document.getElementById('data_nascimento');
         const idadeErrorMsg = document.getElementById('idade-error');
@@ -218,6 +240,6 @@
             validarIdade();
         }
     });
-    </script>
+</script>
 
 {% endblock %}

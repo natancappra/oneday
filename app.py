@@ -1,7 +1,6 @@
 import os
 import uuid
 from datetime import datetime, timedelta, date, timezone
-from flask import Flask, render_template, redirect, url_for, request, abort, flash, send_file
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from werkzeug.utils import secure_filename
 from flask_admin import Admin
@@ -11,19 +10,16 @@ from flask import current_app
 from flask import Flask, render_template, redirect, url_for, request, abort, flash, send_file, jsonify, has_request_context
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer as Serializer
-import json
+from wtforms import PasswordField, BooleanField, StringField
+from wtforms.validators import DataRequired, Optional, Email, Length
 from itertools import combinations
-
+import json
 import io
 import random
 import math
 import config
-from flask import (
-    Flask, request, render_template, redirect, url_for, flash, session
-)
-
+from flask import (Flask, request, render_template, redirect, url_for, flash, session)
 import pandas as pd
-
 from extensions import db
 from models import User, Time, Jogador, Game, Configuracao, Grupo, Classificacao
 
@@ -82,6 +78,7 @@ login_manager.init_app(app)
 
 admin = Admin(app, name='Painel Admin', template_mode='bootstrap4')
 
+# Este é o bloco de código correto em app.py
 
 class AdminModelView(ModelView):
     def is_accessible(self):
@@ -91,14 +88,50 @@ class AdminModelView(ModelView):
         flash('Acesso negado. Apenas o administrador principal (Natan) pode acessar esta área.', 'danger')
         return redirect(url_for('login'))
 
+class UserModelView(AdminModelView):
+    # Exclua o password_hash do formulário e da exibição da coluna na lista
+    form_excluded_columns = ['times', 'password_hash']
+    column_exclude_list = ['password_hash']
 
-admin.add_view(AdminModelView(User, db.session))
+    # --- CAMPOS DO FORMULÁRIO DE CRIAÇÃO ---
+    # Aqui, listamos os campos na ordem desejada.
+    # 'password' é o campo que vamos adicionar manualmente via form_extra_fields.
+    form_create_rules = ['username', 'email', 'password',
+                         'is_admin']  # Use LISTA [] ao invés de TUPLA () para flexibilidade
+
+    # --- CAMPOS DO FORMULÁRIO DE EDIÇÃO ---
+    # Para edição, não precisamos da senha como obrigatória, mas queremos poder alterá-la.
+    form_edit_rules = ['username', 'email', 'is_admin', 'password']  # Use LISTA []
+
+    # --- DEFINIÇÃO EXPLÍCITA DE CAMPOS EXTRAS/SOBRESCRITOS ---
+    # Aqui é onde resolvemos o erro 'AttributeError: 'tuple' object has no attribute 'items''
+    # e garantimos que os campos sejam do tipo certo e com validadores corretos.
+    form_extra_fields = {
+        'password': PasswordField('Senha', validators=[Optional()]),  # Campo de senha, opcional para edição
+        'username': StringField('Nome de Usuário', validators=[DataRequired(), Length(max=80)]),
+        'email': StringField('Email', validators=[DataRequired(), Email(), Length(max=120)]),
+        'is_admin': BooleanField('É Administrador')
+    }
+
+    # --- LÓGICA PARA PROCESSAR A SENHA ---
+    # Este método é chamado antes de salvar o modelo no banco de dados.
+    # Ele faz o hash da senha se uma nova senha for fornecida no formulário.
+    def on_model_change(self, form, model, is_created):
+        if form.password.data:  # Se o campo 'password' do formulário tem dados
+            model.set_password(form.password.data)  # Use o método do seu modelo User para setar a senha
+
+        # Garante que is_admin seja salvo corretamente se for alterado via form_extra_fields
+        if 'is_admin' in form and form.is_admin.data is not None:
+            model.is_admin = form.is_admin.data
+
+        super(UserModelView, self).on_model_change(form, model, is_created)
+
+
+# REGISTRO CORRETO DAS VIEWS
+admin.add_view(UserModelView(User, db.session))
 admin.add_view(AdminModelView(Time, db.session))
 admin.add_view(AdminModelView(Jogador, db.session))
 admin.add_view(AdminModelView(Game, db.session))
-
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
 
 @app.template_filter('from_json')
 def from_json_filter(value):
@@ -527,95 +560,84 @@ def cadastro_jogador(token):
     time = Time.query.filter_by(token=token).first_or_404()
     if time.lider_id != current_user.id and not current_user.is_admin:
         abort(403)
-
     if time.cadastros_encerrados and not current_user.is_admin:
         flash('O cadastro de jogadores para este time foi encerrado.', 'warning')
         return redirect(url_for('ver_time', time_id=time.id))
 
+    # Objeto para manter os dados do formulário em caso de erro
+    form_data = request.form.to_dict() # Converte ImmutableMultiDict para dict
+
     if request.method == 'POST':
-        nome_completo = request.form.get('nome_completo')
-        telefone = request.form.get('telefone')
-        cpf = request.form.get('cpf')
-        rg = request.form.get('rg')
-        data_nascimento_str = request.form.get('data_nascimento')
-        is_adventista = 'is_adventista' in request.form
-        is_capitao = 'is_capitao' in request.form
+        nome_completo = form_data.get('nome_completo')
+        telefone = form_data.get('telefone')
+        cpf = form_data.get('cpf')
+        rg = form_data.get('rg')
+        data_nascimento_str = form_data.get('data_nascimento')
+        is_adventista = 'is_adventista' in form_data
+        is_capitao = 'is_capitao' in form_data
         foto_file = request.files.get('foto')
         foto_identidade_file = request.files.get('foto_identidade')
 
+        # --- INÍCIO DAS VALIDAÇÕES ---
+        # Se uma validação falhar, ela re-renderiza o template com os dados já preenchidos
         if not nome_completo or not telefone:
             flash('O nome completo e o telefone do jogador são obrigatórios.', 'danger')
-            return redirect(url_for('cadastro_jogador', token=token))
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
 
-        # VALIDAÇÃO DE DATA E IDADE
-        data_nascimento = None
-        if data_nascimento_str:
-            try:
-                data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
-                data_campeonato = date(2025, 6, 23)
-                idade = (data_campeonato - data_nascimento).days / 365.25
-
-                if time.modalidade == 'Futebol Masculino':
-                    if not (15 <= idade <= 35):
-                        flash('Erro: Para o Futebol Masculino, o jogador deve ter entre 15 e 35 anos.', 'danger')
-                        return redirect(url_for('cadastro_jogador', token=token))
-                elif time.modalidade in ['Futebol Feminino', 'Vôlei Misto']:
-                    if idade < 15:
-                        flash(f'Erro: Para a modalidade "{time.modalidade}", o jogador deve ter no mínimo 15 anos.',
-                              'danger')
-                        return redirect(url_for('cadastro_jogador', token=token))
-            # O 'except' deve estar alinhado com o 'try'
-            except ValueError:
-                flash('Formato de data de nascimento inválido. Use AAAA-MM-DD.', 'danger')
-                return redirect(url_for('cadastro_jogador', token=token))
-        else:
+        # 1. VALIDAÇÃO DE DATA E IDADE
+        if not data_nascimento_str:
             flash('A data de nascimento é obrigatória.', 'danger')
-            return redirect(url_for('cadastro_jogador', token=token))
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
 
-        # VALIDAÇÃO DE DUPLICIDADE
-        if cpf and cpf.strip():
-            jogador_existente = Jogador.query.filter_by(cpf=cpf.strip()).first()
-            if jogador_existente:
-                flash(f'Erro: Já existe um jogador cadastrado com o CPF {cpf}.', 'danger')
-                return redirect(url_for('cadastro_jogador', token=token))
-        if rg and rg.strip():
-            jogador_existente = Jogador.query.filter_by(rg=rg.strip()).first()
-            if jogador_existente:
-                flash(f'Erro: Já existe um jogador cadastrado com o RG {rg}.', 'danger')
-                return redirect(url_for('cadastro_jogador', token=token))
+        try:
+            data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
+            data_campeonato = date(2025, 6, 23)
+            idade = (data_campeonato - data_nascimento).days / 365.25
 
-        # OUTRAS VALIDAÇÕES
-        if not is_adventista and time.limite_nao_adventistas is not None:
-            non_adventista_count = sum(1 for j in time.jogadores if not j.is_adventista)
-            if non_adventista_count >= time.limite_nao_adventistas:
-                flash(f'Limite de {time.limite_nao_adventistas} jogadores não adventistas atingido.', 'danger')
-                return redirect(url_for('cadastro_jogador', token=token))
-        if is_capitao:
-            existing_captain = Jogador.query.filter_by(time_id=time.id, is_capitao=True).first()
-            if existing_captain:
-                flash(f'O time já possui um capitão ({existing_captain.nome_completo}).', 'danger')
-                return redirect(url_for('cadastro_jogador', token=token))
+            if time.modalidade == 'Futebol Masculino':
+                IDADE_MINIMA, IDADE_MAXIMA_PADRAO, MAX_EXCECOES = 15, 35, 2
+                if idade < IDADE_MINIMA:
+                    flash(f'Erro: O jogador precisa ter no mínimo {IDADE_MINIMA} anos.', 'danger')
+                    return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+                elif idade > IDADE_MAXIMA_PADRAO:
+                    jogadores_acima_idade = [p for p in time.jogadores if p.data_nascimento and (
+                                (data_campeonato - p.data_nascimento).days / 365.25) > IDADE_MAXIMA_PADRAO]
+                    if len(jogadores_acima_idade) >= MAX_EXCECOES:
+                        flash(
+                            f'Erro: O time já atingiu o limite de {MAX_EXCECOES} jogadores com mais de {IDADE_MAXIMA_PADRAO} anos.',
+                            'danger')
+                        return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+            elif time.modalidade in ['Futebol Feminino', 'Vôlei Misto']:
+                if idade < 15:
+                    flash(f'Erro: Para a modalidade "{time.modalidade}", o jogador deve ter no mínimo 15 anos.',
+                          'danger')
+                    return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+        except ValueError:
+            flash('Formato de data de nascimento inválido.', 'danger')
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
 
-        # LÓGICA DE UPLOAD
-        foto_url = None
-        if foto_file and allowed_file(foto_file.filename):
-            try:
-                upload_result = cloudinary.uploader.upload(foto_file)
-                foto_url = upload_result.get('secure_url')
-            except Exception as e:
-                flash(f'Erro ao enviar foto para o Cloudinary: {e}', 'danger')
-                return redirect(url_for('cadastro_jogador', token=token))
+        # 2. VALIDAÇÕES DE DUPLICIDADE E OUTRAS REGRAS
+        if cpf and cpf.strip() and Jogador.query.filter_by(cpf=cpf.strip()).first():
+            flash(f'Erro: Já existe um jogador cadastrado com o CPF {cpf}.', 'danger')
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+        if rg and rg.strip() and Jogador.query.filter_by(rg=rg.strip()).first():
+            flash(f'Erro: Já existe um jogador cadastrado com o RG {rg}.', 'danger')
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+        if is_capitao and Jogador.query.filter_by(time_id=time.id, is_capitao=True).first():
+            flash('O time já possui um capitão.', 'danger')
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
 
-        foto_identidade_url = None
-        if foto_identidade_file and allowed_file(foto_identidade_file.filename):
-            try:
-                upload_result = cloudinary.uploader.upload(foto_identidade_file)
-                foto_identidade_url = upload_result.get('secure_url')
-            except Exception as e:
-                flash(f'Erro ao enviar foto da identidade para o Cloudinary: {e}', 'danger')
-                return redirect(url_for('cadastro_jogador', token=token))
+        # Se todas as validações passarem, o código continua...
+        foto_url, foto_identidade_url = None, None
+        try:
+            if foto_file and allowed_file(foto_file.filename):
+                foto_url = cloudinary.uploader.upload(foto_file).get('secure_url')
+            if foto_identidade_file and allowed_file(foto_identidade_file.filename):
+                foto_identidade_url = cloudinary.uploader.upload(foto_identidade_file).get('secure_url')
+        except Exception as e:
+            flash(f'Erro ao enviar imagens para o Cloudinary: {e}', 'danger')
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
 
-        # SALVANDO NO BANCO
         novo_jogador = Jogador(
             nome_completo=nome_completo, telefone=telefone, cpf=cpf, rg=rg,
             data_nascimento=data_nascimento, is_adventista=is_adventista, is_capitao=is_capitao,
@@ -623,12 +645,139 @@ def cadastro_jogador(token):
         )
         db.session.add(novo_jogador)
         db.session.commit()
-        log_admin_action(f"Cadastrou jogador '{novo_jogador.nome_completo}' para o time '{time.nome_igreja}'")
         flash('Jogador cadastrado com sucesso!', 'success')
         return redirect(url_for('ver_time', time_id=time.id))
 
-    # O 'return render_template' deve estar alinhado com o 'if request.method...'
-    return render_template('cadastro_jogador.html', time=time, perfil='lider')
+    return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data={})
+
+@app.route('/editar_jogador/<int:jogador_id>', methods=['GET', 'POST'])
+@login_required
+def editar_jogador(jogador_id):
+    jogador = Jogador.query.get_or_404(jogador_id)
+    time = jogador.time
+    if time.lider_id != current_user.id and not current_user.is_admin:
+        abort(403)
+    if time.cadastros_encerrados and not current_user.is_admin:
+        flash('As edições para este time foram encerrada.', 'warning')
+        return redirect(url_for('ver_time', time_id=time.id))
+
+    form_data = request.form.to_dict() # Converte ImmutableMultiDict para dict
+
+    if request.method == 'POST':
+        nome_completo = form_data.get('nome_completo')
+        telefone = form_data.get('telefone')
+        cpf = form_data.get('cpf')
+        rg = form_data.get('rg')
+        data_nascimento_str = form_data.get('data_nascimento')
+        is_adventista = 'is_adventista' in form_data
+        is_capitao = 'is_capitao' in form_data
+        foto_file = request.files.get('foto')
+        foto_identidade_file = request.files.get('foto_identidade')
+
+        # --- INÍCIO DAS VALIDAÇÕES ---
+        if not data_nascimento_str:
+            flash('A data de nascimento é obrigatória.', 'danger')
+            return render_template('editar_jogador.html', jogador=jogador,
+                                   perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+
+        try:
+            data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
+            data_campeonato = date(2025, 6, 23)
+            idade = (data_campeonato - data_nascimento).days / 365.25
+
+            if time.modalidade == 'Futebol Masculino':
+                IDADE_MINIMA, IDADE_MAXIMA_PADRAO, MAX_EXCECOES = 15, 35, 2
+                if idade < IDADE_MINIMA:
+                    flash(f'Erro: O jogador precisa ter no mínimo {IDADE_MINIMA} anos.', 'danger')
+                    return render_template('editar_jogador.html', jogador=jogador,
+                                           perfil='lider' if not current_user.is_admin else 'admin',
+                                           form_data=form_data), 400
+                elif idade > IDADE_MAXIMA_PADRAO:
+                    jogadores_acima_idade = [p for p in time.jogadores if p.id != jogador.id and p.data_nascimento and (
+                                (data_campeonato - p.data_nascimento).days / 365.25) > IDADE_MAXIMA_PADRAO]
+                    if len(jogadores_acima_idade) >= MAX_EXCECOES:
+                        flash(
+                            f'Erro: O time já atingiu o limite de {MAX_EXCECOES} jogadores com mais de {IDADE_MAXIMA_PADRAO} anos.',
+                            'danger')
+                        return render_template('editar_jogador.html', jogador=jogador,
+                                               perfil='lider' if not current_user.is_admin else 'admin',
+                                               form_data=form_data), 400
+            elif time.modalidade in ['Futebol Feminino', 'Vôlei Misto']:
+                if idade < 15:
+                    flash(f'Erro: Para a modalidade "{time.modalidade}", o jogador deve ter no mínimo 15 anos.',
+                          'danger')
+                    return render_template('editar_jogador.html', jogador=jogador,
+                                           perfil='lider' if not current_user.is_admin else 'admin',
+                                           form_data=form_data), 400
+        except ValueError:
+            flash('Formato de data de nascimento inválido.', 'danger')
+            return render_template('editar_jogador.html', jogador=jogador,
+                                   perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+
+        if cpf and cpf.strip():
+            if Jogador.query.filter(Jogador.cpf == cpf.strip(), Jogador.id != jogador_id).first():
+                flash(f'Erro: O CPF {cpf} já pertence a outro jogador.', 'danger')
+                return render_template('editar_jogador.html', jogador=jogador,
+                                       perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+        if rg and rg.strip():
+            if Jogador.query.filter(Jogador.rg == rg.strip(), Jogador.id != jogador_id).first():
+                flash(f'Erro: O RG {rg} já pertence a outro jogador.', 'danger')
+                return render_template('editar_jogador.html', jogador=jogador,
+                                       perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+        if is_capitao:
+            outro_capitao = Jogador.query.filter(Jogador.time_id == time.id, Jogador.is_capitao == True,
+                                                 Jogador.id != jogador_id).first()
+            if outro_capitao:
+                flash(
+                    f'O time já possui um capitão ({outro_capitao.nome_completo}). Desmarque o capitão antigo antes de definir um novo.',
+                    'danger')
+                return render_template('editar_jogador.html', jogador=jogador,
+                                       perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+
+        # --- LÓGICA DE ATUALIZAÇÃO (PRESERVADA) ---
+        if foto_file and allowed_file(foto_file.filename):
+            try:
+                upload_result = cloudinary.uploader.upload(foto_file)
+                if jogador.foto:
+                    old_public_id = get_public_id_from_url(jogador.foto)
+                    if old_public_id:
+                        cloudinary.uploader.destroy(old_public_id)
+                jogador.foto = upload_result.get('secure_url')
+            except Exception as e:
+                flash(f'Erro ao atualizar a foto do jogador: {e}', 'danger')
+                return render_template('editar_jogador.html', jogador=jogador,
+                                       perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+
+        foto_identidade_file = request.files.get('foto_identidade')
+        if foto_identidade_file and allowed_file(foto_identidade_file.filename):
+            try:
+                upload_result = cloudinary.uploader.upload(foto_identidade_file)
+                if jogador.foto_identidade:
+                    old_public_id = get_public_id_from_url(jogador.foto_identidade)
+                    if old_public_id:
+                        cloudinary.uploader.destroy(old_public_id)
+                jogador.foto_identidade = upload_result.get('secure_url')
+            except Exception as e:
+                flash(f'Erro ao atualizar a foto da identidade: {e}', 'danger')
+                return render_template('editar_jogador.html', jogador=jogador,
+                                       perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+
+        jogador.nome_completo = nome_completo
+        jogador.telefone = telefone
+        jogador.cpf = cpf
+        jogador.rg = rg
+        jogador.is_adventista = is_adventista
+        jogador.is_capitao = is_capitao
+        jogador.data_nascimento = data_nascimento
+
+        db.session.commit()
+        log_admin_action(
+            f"Editou jogador '{jogador.nome_completo}' (ID: {jogador.id}) do time '{time.nome_igreja}' (ID: {time.id})")
+        flash('Jogador atualizado com sucesso!', 'success')
+        return redirect(url_for('ver_time', time_id=time.id))
+
+    return render_template('editar_jogador.html', jogador=jogador,
+                           perfil='lider' if not current_user.is_admin else 'admin', form_data={})
 
 @app.route('/time/<int:time_id>')
 @login_required
@@ -714,120 +863,6 @@ def editar_time(token):
                            regiao_opcoes=REGIAO_OPCOES,
                            LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO,
                            perfil='lider')
-
-@app.route('/editar_jogador/<int:jogador_id>', methods=['GET', 'POST'])
-@login_required
-def editar_jogador(jogador_id):
-    jogador = Jogador.query.get_or_404(jogador_id)
-    time = jogador.time
-    if time.lider_id != current_user.id and not current_user.is_admin:
-        abort(403)
-
-    if time.cadastros_encerrados and not current_user.is_admin:
-        flash('As edições para este time foram encerrada.', 'warning')
-        return redirect(url_for('ver_time', time_id=time.id))
-
-    if request.method == 'POST':
-        # Pega os dados do formulário
-        nome_completo = request.form.get('nome_completo')
-        telefone = request.form.get('telefone')
-        cpf = request.form.get('cpf')
-        rg = request.form.get('rg')
-        data_nascimento_str = request.form.get('data_nascimento')
-        is_adventista = 'is_adventista' in request.form
-        is_capitao = 'is_capitao' in request.form
-
-        # --- VALIDAÇÕES DE INTEGRIDADE ---
-
-        # 1. VALIDAÇÃO DE IDADE
-        data_nascimento = None # Inicializa a variável
-        if data_nascimento_str:
-            try:
-                data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
-                data_campeonato = date(2025, 6, 23)
-                idade = (data_campeonato - data_nascimento).days / 365.25
-
-                if time.modalidade == 'Futebol Masculino':
-                    if not (15 <= idade <= 35):
-                        flash('Erro: Para o Futebol Masculino, a idade do jogador deve ser entre 15 e 35 anos.', 'danger')
-                        return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-                elif time.modalidade in ['Futebol Feminino', 'Vôlei Misto']:
-                    if idade < 15:
-                        flash(f'Erro: Para a modalidade "{time.modalidade}", o jogador deve ter no mínimo 15 anos.', 'danger')
-                        return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-            except ValueError:
-                # Este 'except' está alinhado com o 'try' acima
-                flash('Formato de data de nascimento inválido. Use AAAA-MM-DD.', 'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-        else:
-            flash('A data de nascimento é obrigatória.', 'danger')
-            return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-
-        # 2. VALIDAÇÃO DE CPF/RG DUPLICADO
-        if cpf and cpf.strip():
-            outro_jogador_com_cpf = Jogador.query.filter(Jogador.cpf == cpf.strip(), Jogador.id != jogador_id).first()
-            if outro_jogador_com_cpf:
-                flash(f'Erro: O CPF {cpf} já pertence a outro jogador.', 'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-
-        if rg and rg.strip():
-            outro_jogador_com_rg = Jogador.query.filter(Jogador.rg == rg.strip(), Jogador.id != jogador_id).first()
-            if outro_jogador_com_rg:
-                flash(f'Erro: O RG {rg} já pertence a outro jogador.', 'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-
-        # --- LÓGICA DE ATUALIZAÇÃO ---
-
-        # Validação de capitão
-        if is_capitao:
-            outro_capitao = Jogador.query.filter(Jogador.time_id == time.id, Jogador.is_capitao == True, Jogador.id != jogador_id).first()
-            if outro_capitao:
-                flash(f'O time já possui um capitão ({outro_capitao.nome_completo}). Desmarque o capitão antigo antes de definir um novo.', 'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-
-        # Upload de arquivos
-        foto_file = request.files.get('foto')
-        if foto_file and allowed_file(foto_file.filename):
-            try:
-                upload_result = cloudinary.uploader.upload(foto_file)
-                if jogador.foto:
-                    old_public_id = get_public_id_from_url(jogador.foto)
-                    if old_public_id:
-                        cloudinary.uploader.destroy(old_public_id)
-                jogador.foto = upload_result.get('secure_url')
-            except Exception as e:
-                flash(f'Erro ao atualizar a foto do jogador: {e}', 'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-
-        foto_identidade_file = request.files.get('foto_identidade')
-        if foto_identidade_file and allowed_file(foto_identidade_file.filename):
-            try:
-                upload_result = cloudinary.uploader.upload(foto_identidade_file)
-                if jogador.foto_identidade:
-                    old_public_id = get_public_id_from_url(jogador.foto_identidade)
-                    if old_public_id:
-                        cloudinary.uploader.destroy(old_public_id)
-                jogador.foto_identidade = upload_result.get('secure_url')
-            except Exception as e:
-                flash(f'Erro ao atualizar a foto da identidade: {e}', 'danger')
-                return redirect(url_for('editar_jogador', jogador_id=jogador_id))
-
-        # Atualiza os dados no banco
-        jogador.nome_completo = nome_completo
-        jogador.telefone = telefone
-        jogador.cpf = cpf
-        jogador.rg = rg
-        jogador.is_adventista = is_adventista
-        jogador.is_capitao = is_capitao
-        jogador.data_nascimento = data_nascimento
-
-        db.session.commit()
-        log_admin_action(f"Editou jogador '{jogador.nome_completo}' (ID: {jogador.id}) do time '{time.nome_igreja}' (ID: {time.id})")
-        flash('Jogador atualizado com sucesso.', 'success')
-        return redirect(url_for('ver_time', time_id=time.id))
-
-    return render_template('editar_jogador.html', jogador=jogador,
-                           perfil='lider' if not current_user.is_admin else 'admin')
 
 @app.route('/excluir_jogador/<int:jogador_id>', methods=['POST'])
 @login_required
