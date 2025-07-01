@@ -57,14 +57,18 @@
 
             <hr>
             <h4 class="mb-3">Logo do Time</h4>
-            <div class="mb-3"><label class="form-label d-block">Logo Atual:</label><img
-                    <img src="{{ time.imagem or url_for('static', filename='img/default_logo.png') }}" alt="Logo do time" class="img-preview-form">
-            <div class="mb-3"><label for="logoInput" class="form-label">Trocar Logo (opcional)</label><input type="file"
-                                                                                                             class="form-control"
-                                                                                                             id="logoInput"
-                                                                                                             name="logo_original"
-                                                                                                             accept="image/*"/>
+
+            <!-- SEÇÃO CORRIGIDA -->
+            <div class="mb-3">
+                <label class="form-label d-block">Logo Atual:</label>
+                <img src="{{ time.imagem or url_for('static', filename='img/default_logo.png') }}" alt="Logo do time" class="img-preview-form">
             </div>
+            <div class="mb-3">
+                <label for="logoInput" class="form-label">Trocar Logo (opcional)</label>
+                <input type="file" class="form-control" id="logoInput" name="logo_original" accept="image/*"/>
+            </div>
+            <!-- FIM DA SEÇÃO CORRIGIDA -->
+
             <div id="cropper-container" class="mt-4" style="display:none;">
                 <div class="row">
                     <div class="col-md-8"><p><strong>Ajuste sua nova imagem:</strong></p>
@@ -160,35 +164,34 @@
             }
         });
         form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    const submitButton = form.querySelector('button[type="submit"]');
-    submitButton.disabled = true;
-    submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Salvando...`;
+            e.preventDefault();
+            const submitButton = form.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Salvando...`;
 
-    const formData = new FormData(form);
-    if (croppedImageBlob) {
-        formData.append('imagem', croppedImageBlob, 'logo.png');
-    }
-    formData.delete('logo_original');
+            const formData = new FormData(form);
+            if (croppedImageBlob) {
+                formData.append('imagem', croppedImageBlob, 'logo.png');
+            }
+            formData.delete('logo_original');
 
-    fetch(form.action, {
-        method: 'POST',
-        body: formData,
-    })
-    .then(response => {
-        // --- CORREÇÃO APLICADA AQUI ---
-        // Se a resposta do servidor for um redirecionamento, o JS obedece e vai para a nova URL.
-        if (response.ok && response.redirected) {
-            window.location.href = response.url;
-        } else {
-            // Se não houver redirect, apenas recarrega a página (útil para ver mensagens de erro)
-            window.location.reload();
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        submitButton.disabled = false;
-        submitButton.innerHTML = 'Salvar Alterações';
+            fetch(form.action, {
+                method: 'POST',
+                body: formData,
+            })
+            .then(response => {
+                if (response.ok && response.redirected) {
+                    window.location.href = response.url;
+                } else {
+                    window.location.reload();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                submitButton.disabled = false;
+                submitButton.innerHTML = 'Salvar Alterações';
+            });
+        });
     });
 </script>
 {% endblock %}

@@ -1,8 +1,8 @@
 """Reset automatico com datetimes corretos
 
-Revision ID: 856257a46e09
+Revision ID: ed21d0462702
 Revises: 
-Create Date: 2025-06-24 22:35:11.559750
+Create Date: 2025-07-01 10:05:04.222341
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '856257a46e09'
+revision = 'ed21d0462702'
 down_revision = None
 branch_labels = None
 depends_on = None

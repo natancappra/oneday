@@ -22,6 +22,8 @@ from flask import (Flask, request, render_template, redirect, url_for, flash, se
 import pandas as pd
 from extensions import db
 from models import User, Time, Jogador, Game, Configuracao, Grupo, Classificacao
+import dropbox
+from PIL import Image
 
 # --- Constantes do Campeonato ---
 REGIAO_OPCOES = [
@@ -55,20 +57,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' # Mantemos esta 
 app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads') # E esta
 mail = Mail(app) # Inicializa a extensão
 
-# --- CLOUDINARY  ---
-import cloudinary
-import cloudinary.uploader
-import config # Importa o arquivo config.py que criamos
-
-cloudinary.config(
-  cloud_name = config.CLOUDINARY_CLOUD_NAME,
-  api_key = config.CLOUDINARY_API_KEY,
-  api_secret = config.CLOUDINARY_API_SECRET,
-  secure = True
-)
-# ----------------------------------------------
-
 # --- Inicialização das extensões ---
+
 db.init_app(app)
 migrate = Migrate(app, db, render_as_batch=True)
 
@@ -231,10 +221,91 @@ def log_auditoria(acao):
         # Se não houver contexto de request (rodando via script), registra como ação do sistema.
         print(f"AUDITORIA: [SISTEMA] Ação automática: {acao} em {timestamp}")
 
+
+def get_dbx_client():
+    """Inicializa e retorna o cliente do Dropbox."""
+    return dropbox.Dropbox(app.config['DROPBOX_ACCESS_TOKEN'])
+
+
+def upload_and_get_shared_link(file_stream):
+    """
+    Otimiza uma imagem, faz o upload para o Dropbox e retorna um link direto para visualização.
+    VERSÃO CORRIGIDA: Converte imagens com transparência (PNG) antes de salvar como JPEG.
+    """
+    try:
+        # Otimização da imagem com Pillow
+        img = Image.open(file_stream)
+
+        # --- LINHA DE CORREÇÃO ADICIONADA AQUI ---
+        # Se a imagem tiver um modo com canal alfa (transparência), como RGBA ou PA,
+        # converte para RGB antes de salvar como JPEG.
+        if img.mode in ('RGBA', 'PA'):
+            img = img.convert("RGB")
+        # -----------------------------------------
+
+        img.thumbnail((800, 800))  # Redimensiona a imagem para no máximo 800x800 pixels
+        in_mem_file = io.BytesIO()
+        # Salva em formato JPEG com 80% de qualidade para reduzir o tamanho
+        img.save(in_mem_file, format='JPEG', quality=80)
+        in_mem_file.seek(0)
+
+        dbx = get_dbx_client()
+        # Cria um nome de arquivo único para evitar conflitos
+        file_path = f"/{uuid.uuid4().hex}.jpg"
+
+        # Faz o upload do arquivo
+        dbx.files_upload(in_mem_file.read(), file_path, mode=dropbox.files.WriteMode('overwrite'))
+
+        # Cria um link compartilhável público
+        settings = dropbox.sharing.SharedLinkSettings(requested_visibility=dropbox.sharing.RequestedVisibility.public)
+        link_metadata = dbx.sharing_create_shared_link_with_settings(file_path, settings)
+
+        # Converte o link padrão do Dropbox para um link de download/visualização direta
+        direct_link = link_metadata.url.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '')
+
+        # Retorna apenas o link direto, que será salvo no banco
+        return direct_link
+    except Exception as e:
+        print(f"Erro no upload para o Dropbox: {e}")
+        return None
+
+
+def get_path_from_dropbox_url(url):
+    """
+    Extrai o caminho do arquivo (ex: /arquivo.jpg) de uma URL do Dropbox
+    para permitir a exclusão.
+    """
+    if not url or 'dropboxusercontent' not in url:
+        return None
+    try:
+        # Extrai a parte final da URL, que é o nome do arquivo
+        filename = url.split('/')[-1].split('?')[0]
+        # Monta o caminho que o Dropbox espera para a exclusão
+        return f"/{filename}"
+    except Exception:
+        return None
+
+
+def delete_from_dropbox(file_path):
+    """Deleta um arquivo do Dropbox usando seu caminho."""
+    if not file_path:
+        return
+    try:
+        dbx = get_dbx_client()
+        dbx.files_delete_v2(file_path)
+        print(f"Arquivo {file_path} deletado do Dropbox.")
+    except Exception as e:
+        # Ignora erros de "arquivo não encontrado" que podem acontecer
+        if isinstance(e, dropbox.exceptions.ApiError) and 'path/not_found' in str(e.error):
+            print(f"Arquivo {file_path} não encontrado no Dropbox, talvez já tenha sido deletado.")
+        else:
+            print(f"Erro ao deletar arquivo do Dropbox ({file_path}): {e}")
+
+
 def allowed_file(filename):
+    """Verifica se o formato do arquivo é permitido."""
     return '.' in filename and \
         filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-
 
 def get_next_power_of_2(n):
     """Retorna a próxima potência de 2 maior ou igual a n."""
@@ -494,13 +565,14 @@ def cadastro_igreja():
         pagou = True if request.form.get('pagou') == 'on' else False
         diretor_jovem = request.form.get('diretor_jovem')
 
-        ## MUDANÇA 1: Lógica de Upload para o Comprovante ##
         comprovante_url = None
         comprovante_file = request.files.get('comprovante_pagamento')
         if comprovante_file and allowed_file(comprovante_file.filename):
             try:
-                upload_result = cloudinary.uploader.upload(comprovante_file)
-                comprovante_url = upload_result.get('secure_url')
+                # Lógica de Upload para o Dropbox
+                comprovante_url = upload_and_get_shared_link(comprovante_file)
+                if not comprovante_url:
+                    raise Exception("A função de upload retornou None.")
             except Exception as e:
                 flash(f'Erro ao enviar o comprovante: {e}', 'danger')
                 return redirect(url_for('cadastro_igreja'))
@@ -512,13 +584,14 @@ def cadastro_igreja():
             flash('Nome da igreja e modalidade são campos obrigatórios.', 'warning')
             return redirect(url_for('cadastro_igreja'))
 
-        ## MUDANÇA 2: Lógica de Upload para a Imagem do Time ##
         imagem_url = None
         imagem_file = request.files.get('imagem')
         if imagem_file and allowed_file(imagem_file.filename):
             try:
-                upload_result = cloudinary.uploader.upload(imagem_file)
-                imagem_url = upload_result.get('secure_url')
+                # Lógica de Upload para o Dropbox
+                imagem_url = upload_and_get_shared_link(imagem_file)
+                if not imagem_url:
+                    raise Exception("A função de upload retornou None.")
             except Exception as e:
                 flash(f'Erro ao enviar a imagem: {e}', 'danger')
                 return redirect(url_for('cadastro_igreja'))
@@ -526,7 +599,6 @@ def cadastro_igreja():
             flash('Formato de imagem inválido. Use PNG, JPG, JPEG ou GIF.', 'danger')
             return redirect(url_for('cadastro_igreja'))
 
-        ## MUDANÇA 3: Salvar as URLs no Banco de Dados ##
         novo_time = Time(
             nome_igreja=nome_igreja,
             distrito=distrito,
@@ -535,10 +607,10 @@ def cadastro_igreja():
             modalidade=modalidade,
             token=str(uuid.uuid4()),
             lider_id=current_user.id,
-            imagem=imagem_url, # Salva a URL da imagem
+            imagem=imagem_url, # Salva a URL do Dropbox
             link_pagamento=LINK_PAGAMENTO_PADRAO,
             pagou=pagou,
-            comprovante_pagamento=comprovante_url, # Salva a URL do comprovante
+            comprovante_pagamento=comprovante_url, # Salva a URL do Dropbox
             diretor_jovem=diretor_jovem,
             limite_nao_adv_fut_masc=request.form.get('limite_nao_adv_fut_masc', type=int, default=1),
             limite_nao_adv_fut_fem=request.form.get('limite_nao_adv_fut_fem', type=int, default=2),
@@ -631,11 +703,11 @@ def cadastro_jogador(token):
         foto_url, foto_identidade_url = None, None
         try:
             if foto_file and allowed_file(foto_file.filename):
-                foto_url = cloudinary.uploader.upload(foto_file).get('secure_url')
+                foto_url = upload_and_get_shared_link(foto_file)
             if foto_identidade_file and allowed_file(foto_identidade_file.filename):
-                foto_identidade_url = cloudinary.uploader.upload(foto_identidade_file).get('secure_url')
+                foto_identidade_url = upload_and_get_shared_link(foto_identidade_file)
         except Exception as e:
-            flash(f'Erro ao enviar imagens para o Cloudinary: {e}', 'danger')
+            flash(f'Erro ao enviar imagens para o Dropbox: {e}', 'danger')
             return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
 
         novo_jogador = Jogador(
@@ -650,6 +722,7 @@ def cadastro_jogador(token):
 
     return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data={})
 
+
 @app.route('/editar_jogador/<int:jogador_id>', methods=['GET', 'POST'])
 @login_required
 def editar_jogador(jogador_id):
@@ -661,9 +734,8 @@ def editar_jogador(jogador_id):
         flash('As edições para este time foram encerrada.', 'warning')
         return redirect(url_for('ver_time', time_id=time.id))
 
-    form_data = request.form.to_dict() # Converte ImmutableMultiDict para dict
-
     if request.method == 'POST':
+        form_data = request.form.to_dict()
         nome_completo = form_data.get('nome_completo')
         telefone = form_data.get('telefone')
         cpf = form_data.get('cpf')
@@ -675,6 +747,8 @@ def editar_jogador(jogador_id):
         foto_identidade_file = request.files.get('foto_identidade')
 
         # --- INÍCIO DAS VALIDAÇÕES ---
+        # Cada bloco 'if' verifica uma condição. Se for inválida, ele retorna e para a execução.
+
         if not data_nascimento_str:
             flash('A data de nascimento é obrigatória.', 'danger')
             return render_template('editar_jogador.html', jogador=jogador,
@@ -718,12 +792,16 @@ def editar_jogador(jogador_id):
             if Jogador.query.filter(Jogador.cpf == cpf.strip(), Jogador.id != jogador_id).first():
                 flash(f'Erro: O CPF {cpf} já pertence a outro jogador.', 'danger')
                 return render_template('editar_jogador.html', jogador=jogador,
-                                       perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+                                       perfil='lider' if not current_user.is_admin else 'admin',
+                                       form_data=form_data), 400
+
         if rg and rg.strip():
             if Jogador.query.filter(Jogador.rg == rg.strip(), Jogador.id != jogador_id).first():
                 flash(f'Erro: O RG {rg} já pertence a outro jogador.', 'danger')
                 return render_template('editar_jogador.html', jogador=jogador,
-                                       perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+                                       perfil='lider' if not current_user.is_admin else 'admin',
+                                       form_data=form_data), 400
+
         if is_capitao:
             outro_capitao = Jogador.query.filter(Jogador.time_id == time.id, Jogador.is_capitao == True,
                                                  Jogador.id != jogador_id).first()
@@ -732,36 +810,39 @@ def editar_jogador(jogador_id):
                     f'O time já possui um capitão ({outro_capitao.nome_completo}). Desmarque o capitão antigo antes de definir um novo.',
                     'danger')
                 return render_template('editar_jogador.html', jogador=jogador,
-                                       perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+                                       perfil='lider' if not current_user.is_admin else 'admin',
+                                       form_data=form_data), 400
 
-        # --- LÓGICA DE ATUALIZAÇÃO (PRESERVADA) ---
+        # --- FIM DAS VALIDAÇÕES ---
+        # Se o código chegou até aqui, todos os dados são válidos. Agora podemos atualizar.
+
+        # Lógica de atualização da foto do jogador
         if foto_file and allowed_file(foto_file.filename):
             try:
-                upload_result = cloudinary.uploader.upload(foto_file)
                 if jogador.foto:
-                    old_public_id = get_public_id_from_url(jogador.foto)
-                    if old_public_id:
-                        cloudinary.uploader.destroy(old_public_id)
-                jogador.foto = upload_result.get('secure_url')
+                    old_path = get_path_from_dropbox_url(jogador.foto)
+                    delete_from_dropbox(old_path)
+                jogador.foto = upload_and_get_shared_link(foto_file)
             except Exception as e:
                 flash(f'Erro ao atualizar a foto do jogador: {e}', 'danger')
                 return render_template('editar_jogador.html', jogador=jogador,
-                                       perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+                                       perfil='lider' if not current_user.is_admin else 'admin',
+                                       form_data=form_data), 400
 
-        foto_identidade_file = request.files.get('foto_identidade')
+        # Lógica de atualização da foto da identidade
         if foto_identidade_file and allowed_file(foto_identidade_file.filename):
             try:
-                upload_result = cloudinary.uploader.upload(foto_identidade_file)
                 if jogador.foto_identidade:
-                    old_public_id = get_public_id_from_url(jogador.foto_identidade)
-                    if old_public_id:
-                        cloudinary.uploader.destroy(old_public_id)
-                jogador.foto_identidade = upload_result.get('secure_url')
+                    old_path = get_path_from_dropbox_url(jogador.foto_identidade)
+                    delete_from_dropbox(old_path)
+                jogador.foto_identidade = upload_and_get_shared_link(foto_identidade_file)
             except Exception as e:
                 flash(f'Erro ao atualizar a foto da identidade: {e}', 'danger')
                 return render_template('editar_jogador.html', jogador=jogador,
-                                       perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+                                       perfil='lider' if not current_user.is_admin else 'admin',
+                                       form_data=form_data), 400
 
+        # Atualiza os dados do jogador no banco
         jogador.nome_completo = nome_completo
         jogador.telefone = telefone
         jogador.cpf = cpf
@@ -776,6 +857,7 @@ def editar_jogador(jogador_id):
         flash('Jogador atualizado com sucesso!', 'success')
         return redirect(url_for('ver_time', time_id=time.id))
 
+    # Para requisições GET, apenas renderiza o formulário
     return render_template('editar_jogador.html', jogador=jogador,
                            perfil='lider' if not current_user.is_admin else 'admin', form_data={})
 
@@ -791,7 +873,6 @@ def ver_time(time_id):
     return render_template('ver_time.html', time=time, perfil='admin' if current_user.is_admin else 'lider',
                            now=datetime.now(timezone.utc))
 
-
 @app.route('/editar_time/<token>', methods=['GET', 'POST'])
 @login_required
 def editar_time(token):
@@ -804,60 +885,57 @@ def editar_time(token):
         return redirect(url_for('ver_time', time_id=time.id))
 
     if request.method == 'POST':
+        # --- 1. ATUALIZA OS DADOS DE TEXTO PRIMEIRO ---
         time.nome_igreja = request.form.get('nome_igreja')
         time.distrito = request.form.get('distrito')
         time.regiao = request.form.get('regiao')
         time.nome_base = request.form.get('nome_base')
         time.modalidade = request.form.get('modalidade')
-        time.pagou = True if request.form.get('pagou') == 'on' else False
+        time.pagou = 'pagou' in request.form
         time.diretor_jovem = request.form.get('diretor_jovem')
-
-        ## MUDANÇA 1: Lógica de Upload do Comprovante ##
-        comprovante_file = request.files.get('comprovante_pagamento')
-        if comprovante_file and allowed_file(comprovante_file.filename):
-            try:
-                # Envia o novo arquivo
-                upload_result = cloudinary.uploader.upload(comprovante_file)
-                # Apaga o arquivo antigo do Cloudinary, se existir
-                if time.comprovante_pagamento:
-                    old_public_id = get_public_id_from_url(time.comprovante_pagamento)
-                    if old_public_id:
-                        cloudinary.uploader.destroy(old_public_id)
-                # Atualiza o banco de dados com a nova URL
-                time.comprovante_pagamento = upload_result.get('secure_url')
-            except Exception as e:
-                flash(f'Erro ao atualizar o comprovante: {e}', 'danger')
-                return redirect(url_for('editar_time', token=token))
-        elif comprovante_file and comprovante_file.filename != '':
-            flash('Formato de comprovante inválido. Use PNG, JPG, JPEG, GIF ou PDF.', 'danger')
-            return redirect(url_for('editar_time', token=token))
-
-        ## MUDANÇA 2: Lógica de Upload da Imagem do Time ##
-        imagem_file = request.files.get('imagem')
-        if imagem_file and allowed_file(imagem_file.filename):
-            try:
-                # Envia o novo arquivo
-                upload_result = cloudinary.uploader.upload(imagem_file)
-                # Apaga o arquivo antigo do Cloudinary, se existir
-                if time.imagem:
-                    old_public_id = get_public_id_from_url(time.imagem)
-                    if old_public_id:
-                        cloudinary.uploader.destroy(old_public_id)
-                # Atualiza o banco de dados com a nova URL
-                time.imagem = upload_result.get('secure_url')
-            except Exception as e:
-                flash(f'Erro ao atualizar a imagem: {e}', 'danger')
-                return redirect(url_for('editar_time', token=token))
-        elif imagem_file and imagem_file.filename != '':
-            flash('Formato de imagem inválido. Use PNG, JPG, JPEG ou GIF.', 'danger')
-            return redirect(url_for('editar_time', token=token))
-
         time.link_pagamento = LINK_PAGAMENTO_PADRAO
+
+        # --- 2. LÓGICA DE UPLOAD REFINADA ---
+
+        # Lógica para o Comprovante de Pagamento
+        comprovante_file = request.files.get('comprovante_pagamento')
+        if comprovante_file and comprovante_file.filename: # Garante que um arquivo foi selecionado
+            if allowed_file(comprovante_file.filename):
+                try:
+                    if time.comprovante_pagamento:
+                        old_path = get_path_from_dropbox_url(time.comprovante_pagamento)
+                        delete_from_dropbox(old_path)
+                    time.comprovante_pagamento = upload_and_get_shared_link(comprovante_file)
+                except Exception as e:
+                    flash(f'Erro ao atualizar o comprovante: {e}', 'danger')
+                    return redirect(url_for('editar_time', token=token))
+            else:
+                flash('Formato de comprovante inválido. Use PNG, JPG, JPEG, GIF ou PDF.', 'danger')
+                return redirect(url_for('editar_time', token=token))
+
+        # Lógica para a Imagem do Time
+        imagem_file = request.files.get('imagem')
+        if imagem_file and imagem_file.filename: # Garante que um arquivo foi selecionado
+            if allowed_file(imagem_file.filename):
+                try:
+                    if time.imagem:
+                        old_path = get_path_from_dropbox_url(time.imagem)
+                        delete_from_dropbox(old_path)
+                    time.imagem = upload_and_get_shared_link(imagem_file)
+                except Exception as e:
+                    flash(f'Erro ao atualizar a imagem: {e}', 'danger')
+                    return redirect(url_for('editar_time', token=token))
+            else:
+                flash('Formato de imagem inválido. Use PNG, JPG, JPEG ou GIF.', 'danger')
+                return redirect(url_for('editar_time', token=token))
+
+        # --- 3. SALVA TODAS AS ALTERAÇÕES NO BANCO DE DADOS ---
         db.session.commit()
         log_admin_action(f"Editou time: '{time.nome_igreja}'")
         flash('Time atualizado com sucesso.', 'success')
         return redirect(url_for('ver_time', time_id=time.id))
 
+    # Para requisições GET, apenas renderiza o formulário
     return render_template('editar_time.html',
                            time=time,
                            regiao_opcoes=REGIAO_OPCOES,
@@ -878,17 +956,15 @@ def excluir_jogador(jogador_id):
 
     # Apaga a foto do jogador do Cloudinary, se existir
     if jogador.foto:
-        public_id = get_public_id_from_url(jogador.foto)
-        if public_id:
-            cloudinary.uploader.destroy(public_id)
-            log_auditoria(f"Excluiu do Cloudinary (foto jogador): {public_id}")
+        file_path = get_path_from_dropbox_url(jogador.foto)
+        delete_from_dropbox(file_path)
+        log_auditoria(f"Excluiu do Dropbox (foto jogador): {file_path}")
 
     # Apaga a foto da identidade do Cloudinary, se existir
     if jogador.foto_identidade:
-        public_id = get_public_id_from_url(jogador.foto_identidade)
-        if public_id:
-            cloudinary.uploader.destroy(public_id)
-            log_auditoria(f"Excluiu do Cloudinary (identidade): {public_id}")
+        file_path = get_path_from_dropbox_url(jogador.foto_identidade)
+        delete_from_dropbox(file_path)
+        log_auditoria(f"Excluiu do Dropbox (identidade): {file_path}")
 
     db.session.delete(jogador)
     db.session.commit()
@@ -913,31 +989,28 @@ def excluir_time(time_id):
 
     # Apaga a imagem/logo do time do Cloudinary
     if time.imagem:
-        public_id = get_public_id_from_url(time.imagem)
-        if public_id:
-            cloudinary.uploader.destroy(public_id)
-            log_auditoria(f"Excluiu do Cloudinary (logo time): {public_id}")
+        file_path = get_path_from_dropbox_url(time.imagem)
+        delete_from_dropbox(file_path)
+        log_auditoria(f"Excluiu do Dropbox (logo time): {file_path}")
 
     # Apaga o comprovante de pagamento do Cloudinary
     if time.comprovante_pagamento:
-        public_id = get_public_id_from_url(time.comprovante_pagante)
-        if public_id:
-            cloudinary.uploader.destroy(public_id)
-            log_auditoria(f"Excluiu do Cloudinary (comprovante): {public_id}")
+        # CORREÇÃO: o nome da variável estava 'comprovante_pagante' no seu código original
+        file_path = get_path_from_dropbox_url(time.comprovante_pagamento)
+        delete_from_dropbox(file_path)
+        log_auditoria(f"Excluiu do Dropbox (comprovante): {file_path}")
 
     # Itera sobre todos os jogadores do time e apaga suas imagens também
     for jogador in time.jogadores:
         if jogador.foto:
-            public_id = get_public_id_from_url(jogador.foto)
-            if public_id:
-                cloudinary.uploader.destroy(public_id)
-                log_auditoria(f"Excluiu do Cloudinary (foto jogador): {public_id}")
+            file_path = get_path_from_dropbox_url(jogador.foto)
+            delete_from_dropbox(file_path)
+            log_auditoria(f"Excluiu do Dropbox (foto jogador): {file_path}")
 
         if jogador.foto_identidade:
-            public_id = get_public_id_from_url(jogador.foto_identidade)
-            if public_id:
-                cloudinary.uploader.destroy(public_id)
-                log_auditoria(f"Excluiu do Cloudinary (identidade): {public_id}")
+            file_path = get_path_from_dropbox_url(jogador.foto_identidade)
+            delete_from_dropbox(file_path)
+            log_auditoria(f"Excluiu do Dropbox (identidade): {file_path}")
 
     # Deleta os jogos associados ao time
     Game.query.filter(
