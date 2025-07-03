@@ -215,3 +215,4 @@ admin_logins.txt
 database.db
 instance/
 db.sqlite3
+generate_refresh_token.py
