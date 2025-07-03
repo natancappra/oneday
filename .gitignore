@@ -215,4 +215,6 @@ admin_logins.txt
 database.db
 instance/
 db.sqlite3
+
+remover o gerador de dropbox
 generate_refresh_token.py
