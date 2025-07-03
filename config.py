@@ -1,6 +1,9 @@
+# ----------------------------------------------------
+# ARQUIVO: config.py (VERSÃO FINAL E PERMANENTE)
+# ----------------------------------------------------
 import os
 
-# Chave secreta do Flask (pode ser qualquer coisa, mas mantenha a consistência)
+# Chave secreta do Flask
 SECRET_KEY = 'vkexidzlrxtpyarh'
 
 # Credenciais de E-mail
@@ -9,8 +12,13 @@ MAIL_PORT = 465
 MAIL_USE_TLS = False
 MAIL_USE_SSL = True
 MAIL_USERNAME = 'onedaycampeonato@gmail.com'
-MAIL_PASSWORD = 'wzdkomhpczvgokgb' # <-- COLE A SENHA DE 16 LETRAS AQUI
+MAIL_PASSWORD = 'wzdkomhpczvgokgb' # Senha de App do Gmail
 
-# Credenciais do Dropbox
-# Este é o token de acesso gerado a partir do seu App no Dropbox.
-DROPBOX_ACCESS_TOKEN = 'sl.u.AF2ROX-W5w7h-S902Z5z6F9BQNE3xiou-1dU2IomELF-j3-sEE3rayuJM-kMiIBg19OrnHa3JO2KpKwL7y8L5JvCcbq_U1-0oY-KZvvVdvoA_F0mTjlSszMbUmn18g2pdodn-68vRV11h1M7qjwyVsnD3CY3t2IIbIJF3B4WoZQQXceiuCpsNsD977kNJm6d3ZRaXXRzmyBu1-Y3ci22Qbz-GR32NANVxImjocteWLJz2j9Ue39_0iGMwpUIwj0_ijZpAn1vs8aaI_lhME1Wwbqbz7axJdt4uIDSsrEdltnF1wejANFbDxCtP1tN3JVllNhyYkbYP1v5Aq1bNgY0MaMs__fqfPniAq2FnumYJGoRxd8ViwmD_tQZg7OVRAVCZaNiFNy8nSGeXe5uUyDFnOR4JjvVLCItfVYjnDJf8yF0c5ogalivWwga8XfogTVIFeNC99AMCeC-I1w8au9dVAIkPuDTzvS7oHJz1b5OFu9g76QCoBn6IqNX1QGdlbm-aZWFbSagP9LSo3rfLOCIw514A-CnyuTM5ttxDOUH5MvdZRe5jSTtCLqekD_W6SmMTSZf1fakEwfMR3mEx2a-5adWEAgXxNVtdwndlkkGYE2qqpagGp1REKDkK2WmXunhWegw7_rgfn-rDVt6OnA1wcKirxODvL1-TqCLFfCzYDYWHpSyd4yllQlxRA4GHnGG3FKqLOvVWXOgLXxAP_PFV7cRgqnexC2oKYczDUD6-ThUmbCSN76PZZOfNrGh37_Yk7dLIoEqYYWYtJ-R0Ay4jtJu43m-xcDFq4ilhEHjq7uvDlP6SjmwwfnNCpjNA4fRNSiLKUroDG87bqP3OxpP2x8YVGU2C61PGUnVaPU8ukHUTDfVAH7kGovlNOj2vajH8c_hbNwZgLywA1zp4GNhiqwmSPNJRQtTbAzPLYECMI1s53N9ctAz4Zq4H_yyPOUffLtmRdSnR9UAmGOGehkSMjzcKlyi7-w7DgYAYfmlBchgzAdyou_WbqY_vVl7uNk9iFEx7HZrnNkUgLfJ_PBkbTykPTbxeNzu7W0y8klZ-NVtKO7KgriKzdHaR6Wm0xyinBcMBblmzkebSiI4n0vbamhaJxbrXSH4RJQoABm2LU_3CpHVbXKiB8UmRpF7ks60R0ags4tetd01T5WR4PzswUgAYlWHxgoS3TSUSNzkEEFsuybfmVe7AJ6TDKWwrOCkWlq8p6l1dEKqsnU4kWSAd6Eqen3gB7ZZIQe5Spp9tsWSf9L2RaBKAWdS_c_Qv3YkR7rrsCMRAVzx0xSrs3H0UH2GyeiQ0P6l_NolNkrFyUQFlkSUfbHpVUCqb3TUgIQHa-P2k4LExsIvLbvQKe5hksrzd2aTSVqMRu_deQHst7CgimbAMQIY63TXKy4iSSmW_EL7_KFDMs2N4_fpKSZ1U26w'
+# --- CREDENCIAIS DO DROPBOX (MÉTODO PERMANENTE) ---
+# Cole os valores que você obteve nos passos anteriores.
+# A App Key e App Secret estão no site do Dropbox.
+# O Refresh Token é o que acabamos de gerar.
+
+DROPBOX_APP_KEY = "3uemkxlkebni3jy" # A sua App Key
+DROPBOX_APP_SECRET = "yqt7bycxxyscbuh" # A sua App Secret
+DROPBOX_REFRESH_TOKEN = "KBMshj6pU6cAAAAAAAAAAUQaAAdFmqvTDUe5AB1hMM1bcQWQSaYZ3Css1CZ7CM9B" # O Refresh Token que você gerou

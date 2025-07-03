@@ -223,8 +223,17 @@ def log_auditoria(acao):
 
 
 def get_dbx_client():
-    """Inicializa e retorna o cliente do Dropbox."""
-    return dropbox.Dropbox(app.config['DROPBOX_ACCESS_TOKEN'])
+    """
+    Inicializa e retorna o cliente do Dropbox usando o Refresh Token.
+    Este método garante que o acesso seja sempre válido e se renove
+    automaticamente.
+    """
+    dbx = dropbox.Dropbox(
+        app_key=app.config['DROPBOX_APP_KEY'],
+        app_secret=app.config['DROPBOX_APP_SECRET'],
+        oauth2_refresh_token=app.config['DROPBOX_REFRESH_TOKEN']
+    )
+    return dbx
 
 
 def upload_and_get_shared_link(file_stream):
