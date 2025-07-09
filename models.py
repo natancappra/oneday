@@ -115,12 +115,13 @@ class Game(db.Model):
 class Configuracao(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     cadastros_globais_encerrados = db.Column(db.Boolean, default=False)
-
-    # --- CAMPOS ADICIONADOS PARA GUARDAR O NÚMERO DE QUADRAS ---
-    num_quadras_fut_masc = db.Column(db.Integer, default=0)
-    num_quadras_fut_fem = db.Column(db.Integer, default=0)
-    num_quadras_volei_misto = db.Column(db.Integer, default=0)
-
+    num_quadras_fut_masc = db.Column(db.Integer, default=3)
+    num_quadras_fut_fem = db.Column(db.Integer, default=3)
+    num_quadras_volei_misto = db.Column(db.Integer, default=3)
+    # --- Certifique-se que estas colunas existem! ---
+    limite_nao_adv_fut_masc = db.Column(db.Integer, default=1) # Limite padrão para Futebol Masculino
+    limite_nao_adv_fut_fem = db.Column(db.Integer, default=2) # Limite padrão para Futebol Feminino
+    limite_nao_adv_volei_misto = db.Column(db.Integer, default=1) # Limite padrão para Vôlei Misto
 
 def __repr__(self):
     t_a_name = self.time_a.nome_igreja if self.time_a else "A definir"

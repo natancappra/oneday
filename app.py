@@ -24,6 +24,7 @@ from extensions import db
 from models import User, Time, Jogador, Game, Configuracao, Grupo, Classificacao
 import dropbox
 from PIL import Image
+import traceback
 
 # --- Constantes do Campeonato ---
 REGIAO_OPCOES = [
@@ -235,22 +236,23 @@ def get_dbx_client():
     )
     return dbx
 
-
 def upload_and_get_shared_link(file_stream):
     """
     Otimiza uma imagem, faz o upload para o Dropbox e retorna um link direto para visualização.
-    VERSÃO CORRIGIDA: Converte imagens com transparência (PNG) antes de salvar como JPEG.
+    VERSÃO CORRIGIDA: Garante que o stream da imagem seja lido desde o início.
     """
     try:
+        # --- LINHA DE CORREÇÃO ADICIONADA AQUI ---
+        file_stream.seek(0)
+        # -----------------------------------------
+
         # Otimização da imagem com Pillow
         img = Image.open(file_stream)
 
-        # --- LINHA DE CORREÇÃO ADICIONADA AQUI ---
         # Se a imagem tiver um modo com canal alfa (transparência), como RGBA ou PA,
         # converte para RGB antes de salvar como JPEG.
         if img.mode in ('RGBA', 'PA'):
             img = img.convert("RGB")
-        # -----------------------------------------
 
         img.thumbnail((800, 800))  # Redimensiona a imagem para no máximo 800x800 pixels
         in_mem_file = io.BytesIO()
@@ -282,13 +284,18 @@ def upload_and_get_shared_link(file_stream):
 def get_path_from_dropbox_url(url):
     """
     Extrai o caminho do arquivo (ex: /arquivo.jpg) de uma URL do Dropbox
-    para permitir a exclusão.
+    para permitir a exclusão. VERSÃO CORRIGIDA E MAIS SEGURA.
     """
     if not url or 'dropboxusercontent' not in url:
         return None
     try:
         # Extrai a parte final da URL, que é o nome do arquivo
         filename = url.split('/')[-1].split('?')[0]
+
+        # VERIFICAÇÃO ADICIONAL: Garante que o nome do arquivo não está vazio
+        if not filename:
+            return None
+
         # Monta o caminho que o Dropbox espera para a exclusão
         return f"/{filename}"
     except Exception:
@@ -471,7 +478,7 @@ def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
     if request.method == 'POST':
-        username = request.form.get('username')
+        username = request.form.get('username').strip()
         password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
 
@@ -506,8 +513,8 @@ def signup():
         return redirect(url_for('index'))
 
     if request.method == 'POST':
-        username = request.form.get('username')
-        email = request.form.get('email')
+        username = request.form.get('username').strip()
+        email = request.form.get('email').strip()
         password = request.form.get('password')
 
         # --- NOVA LÓGICA DE VERIFICAÇÃO ---
@@ -561,10 +568,12 @@ def lista_times():
     times = Time.query.all()
     return render_template('lista_times.html', times=times, perfil='admin', now=datetime.now(timezone.utc))
 
-
 @app.route('/cadastro_igreja', methods=['GET', 'POST'])
 @login_required
 def cadastro_igreja():
+    # --- ADICIONE ESTA LINHA AQUI ---
+    form_data = {} # Inicializa form_data como um dicionário vazio por padrão
+
     if request.method == 'POST':
         nome_igreja = request.form.get('nome_igreja')
         distrito = request.form.get('distrito')
@@ -574,39 +583,57 @@ def cadastro_igreja():
         pagou = True if request.form.get('pagou') == 'on' else False
         diretor_jovem = request.form.get('diretor_jovem')
 
+        # Converte para dict para manter os dados no formulário em caso de erro.
+        # Agora, esta linha irá ATUALIZAR a variável form_data já inicializada.
+        form_data = request.form.to_dict() # <--- MANTENHA ESTA LINHA
+
+        ## MUDANÇA 1: Lógica de Upload para o Comprovante ##
         comprovante_url = None
         comprovante_file = request.files.get('comprovante_pagamento')
         if comprovante_file and allowed_file(comprovante_file.filename):
             try:
                 # Lógica de Upload para o Dropbox
+                # (Assumindo que 'upload_and_get_shared_link' está definida em algum lugar)
                 comprovante_url = upload_and_get_shared_link(comprovante_file)
                 if not comprovante_url:
-                    raise Exception("A função de upload retornou None.")
+                    flash('Erro: A URL do comprovante não foi gerada.', 'danger')
+                    return render_template('cadastro_igreja.html', regiao_opcoes=REGIAO_OPCOES, LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO, form_data=form_data), 400
             except Exception as e:
-                flash(f'Erro ao enviar o comprovante: {e}', 'danger')
-                return redirect(url_for('cadastro_igreja'))
+                print("--- ERRO DETALHADO NO UPLOAD DO COMPROVANTE ---")
+                traceback.print_exc()
+                print("---------------------------------------------")
+                flash(f'Erro interno ao processar comprovante. Verifique o terminal.', 'danger')
+                return render_template('cadastro_igreja.html', regiao_opcoes=REGIAO_OPCOES,
+                                           LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO, form_data=form_data), 400
         elif comprovante_file and comprovante_file.filename != '':
             flash('Formato de comprovante inválido. Use PNG, JPG, JPEG, GIF ou PDF.', 'danger')
-            return redirect(url_for('cadastro_igreja'))
+            return render_template('cadastro_igreja.html', regiao_opcoes=REGIAO_OPCOES, LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO, form_data=form_data), 400
 
         if not nome_igreja or not modalidade:
-            flash('Nome da igreja e modalidade são campos obrigatórios.', 'warning')
-            return redirect(url_for('cadastro_igreja'))
+            flash('Nome da igreja e modalidade são campos obrigatórios.', 'danger')
+            return render_template('cadastro_igreja.html', regiao_opcoes=REGIAO_OPCOES, LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO, form_data=form_data), 400
+
 
         imagem_url = None
         imagem_file = request.files.get('imagem')
         if imagem_file and allowed_file(imagem_file.filename):
             try:
                 # Lógica de Upload para o Dropbox
+                # (Assumindo que 'upload_and_get_shared_link' está definida em algum lugar)
                 imagem_url = upload_and_get_shared_link(imagem_file)
                 if not imagem_url:
-                    raise Exception("A função de upload retornou None.")
+                    flash('Erro: A URL da imagem não foi gerada.', 'danger')
+                    return render_template('cadastro_igreja.html', regiao_opcoes=REGIAO_OPCOES, LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO, form_data=form_data), 400
             except Exception as e:
-                flash(f'Erro ao enviar a imagem: {e}', 'danger')
-                return redirect(url_for('cadastro_igreja'))
+                print("--- ERRO DETALHADO NO UPLOAD DA IMAGEM DO TIME ---")
+                traceback.print_exc()
+                print("--------------------------------------------------")
+                flash(f'Erro interno ao processar imagem do time. Verifique o terminal.', 'danger')
+                return render_template('cadastro_igreja.html', regiao_opcoes=REGIAO_OPCOES,
+                                           LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO, form_data=form_data), 400
         elif imagem_file and imagem_file.filename != '':
             flash('Formato de imagem inválido. Use PNG, JPG, JPEG ou GIF.', 'danger')
-            return redirect(url_for('cadastro_igreja'))
+            return render_template('cadastro_igreja.html', regiao_opcoes=REGIAO_OPCOES, LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO, form_data=form_data), 400
 
         novo_time = Time(
             nome_igreja=nome_igreja,
@@ -616,10 +643,10 @@ def cadastro_igreja():
             modalidade=modalidade,
             token=str(uuid.uuid4()),
             lider_id=current_user.id,
-            imagem=imagem_url, # Salva a URL do Dropbox
+            imagem=imagem_url,
             link_pagamento=LINK_PAGAMENTO_PADRAO,
             pagou=pagou,
-            comprovante_pagamento=comprovante_url, # Salva a URL do Dropbox
+            comprovante_pagamento=comprovante_url,
             diretor_jovem=diretor_jovem,
             limite_nao_adv_fut_masc=request.form.get('limite_nao_adv_fut_masc', type=int, default=1),
             limite_nao_adv_fut_fem=request.form.get('limite_nao_adv_fut_fem', type=int, default=2),
@@ -628,12 +655,22 @@ def cadastro_igreja():
         db.session.add(novo_time)
         db.session.commit()
         log_admin_action(f"Cadastrou novo time: '{nome_igreja}'")
-        flash('Time cadastrado com sucesso!', 'success')
-        return redirect(url_for('index'))
+        flash('Time cadastrado com sucesso! Você pode prosseguir para o pagamento.', 'success')
 
+        # Este return render_template já está correto após a última alteração para incluir form_data
+        return render_template('cadastro_igreja.html',
+                               regiao_opcoes=REGIAO_OPCOES,
+                               LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO,
+                               form_data=form_data, # ESTE form_data é o que foi preenchido no POST
+                               time=novo_time), 200
+
+    # Se o método não for POST (primeira carga da página), renderiza o formulário vazio
+    # A variável form_data já foi inicializada no início da função como {}
     return render_template('cadastro_igreja.html',
                            regiao_opcoes=REGIAO_OPCOES,
-                           LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO)
+                           LINK_PAGAMENTO_PADRAO=LINK_PAGAMENTO_PADRAO,
+                           form_data=form_data, # ESTE form_data é o dicionário vazio inicializado
+                           time=None)
 
 @app.route('/cadastro_jogador/<token>', methods=['GET', 'POST'])
 @login_required
@@ -645,10 +682,30 @@ def cadastro_jogador(token):
         flash('O cadastro de jogadores para este time foi encerrado.', 'warning')
         return redirect(url_for('ver_time', time_id=time.id))
 
-    # Objeto para manter os dados do formulário em caso de erro
-    form_data = request.form.to_dict() # Converte ImmutableMultiDict para dict
+    # Inicializa form_data e variáveis de frontend ANTES do bloco POST
+    # Isso garante que elas sempre existam para o return final
+    form_data = {}
+    limite_nao_adventistas_para_frontend = 0
+    count_nao_adventistas_para_frontend = 0  # Será atualizado abaixo
+
+    # Define os defaults para os limites (caso config não exista ou atributos sejam None)
+    limite_fut_masc_default = 1
+    limite_fut_fem_default = 2
+    limite_volei_misto_default = 1
+
+    # Lógica para contar jogadores com mais de 35 anos (apenas para Futebol Masculino)
+    count_acima_idade = 0
+    MAX_EXCECOES = 2  # O limite definido
+    if time.modalidade == 'Futebol Masculino':
+        data_campeonato = date(2025, 6, 23)
+        jogadores_acima_idade = [
+            p for p in time.jogadores if p.data_nascimento and
+                                         (((data_campeonato - p.data_nascimento).days / 365.25) > 35)
+        ]
+        count_acima_idade = len(jogadores_acima_idade)
 
     if request.method == 'POST':
+        form_data = request.form.to_dict()  # Atualiza form_data com os dados do POST
         nome_completo = form_data.get('nome_completo')
         telefone = form_data.get('telefone')
         cpf = form_data.get('cpf')
@@ -659,16 +716,20 @@ def cadastro_jogador(token):
         foto_file = request.files.get('foto')
         foto_identidade_file = request.files.get('foto_identidade')
 
-        # --- INÍCIO DAS VALIDAÇÕES ---
-        # Se uma validação falhar, ela re-renderiza o template com os dados já preenchidos
+        # --- Suas validações existentes ---
         if not nome_completo or not telefone:
             flash('O nome completo e o telefone do jogador são obrigatórios.', 'danger')
-            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+            # Retorna aqui com status 400
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                   limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                   count_nao_adventistas=count_nao_adventistas_para_frontend), 400
 
-        # 1. VALIDAÇÃO DE DATA E IDADE
         if not data_nascimento_str:
             flash('A data de nascimento é obrigatória.', 'danger')
-            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+            # Retorna aqui com status 400
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                   limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                   count_nao_adventistas=count_nao_adventistas_para_frontend), 400
 
         try:
             data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
@@ -679,36 +740,93 @@ def cadastro_jogador(token):
                 IDADE_MINIMA, IDADE_MAXIMA_PADRAO, MAX_EXCECOES = 15, 35, 2
                 if idade < IDADE_MINIMA:
                     flash(f'Erro: O jogador precisa ter no mínimo {IDADE_MINIMA} anos.', 'danger')
-                    return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+                    return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                           limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                           count_nao_adventistas=count_nao_adventistas_para_frontend), 400
                 elif idade > IDADE_MAXIMA_PADRAO:
                     jogadores_acima_idade = [p for p in time.jogadores if p.data_nascimento and (
-                                (data_campeonato - p.data_nascimento).days / 365.25) > IDADE_MAXIMA_PADRAO]
+                            (data_campeonato - p.data_nascimento).days / 365.25) > IDADE_MAXIMA_PADRAO]
                     if len(jogadores_acima_idade) >= MAX_EXCECOES:
                         flash(
                             f'Erro: O time já atingiu o limite de {MAX_EXCECOES} jogadores com mais de {IDADE_MAXIMA_PADRAO} anos.',
                             'danger')
-                        return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+                        return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                               limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                               count_nao_adventistas=count_nao_adventistas_para_frontend), 400
             elif time.modalidade in ['Futebol Feminino', 'Vôlei Misto']:
                 if idade < 15:
                     flash(f'Erro: Para a modalidade "{time.modalidade}", o jogador deve ter no mínimo 15 anos.',
                           'danger')
-                    return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+                    return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                           limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                           count_nao_adventistas=count_nao_adventistas_para_frontend), 400
         except ValueError:
             flash('Formato de data de nascimento inválido.', 'danger')
-            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                   limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                   count_nao_adventistas=count_nao_adventistas_para_frontend), 400
 
-        # 2. VALIDAÇÕES DE DUPLICIDADE E OUTRAS REGRAS
         if cpf and cpf.strip() and Jogador.query.filter_by(cpf=cpf.strip()).first():
             flash(f'Erro: Já existe um jogador cadastrado com o CPF {cpf}.', 'danger')
-            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                   limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                   count_nao_adventistas=count_nao_adventistas_para_frontend), 400
         if rg and rg.strip() and Jogador.query.filter_by(rg=rg.strip()).first():
             flash(f'Erro: Já existe um jogador cadastrado com o RG {rg}.', 'danger')
-            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                   limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                   count_nao_adventistas=count_nao_adventistas_para_frontend), 400
         if is_capitao and Jogador.query.filter_by(time_id=time.id, is_capitao=True).first():
             flash('O time já possui um capitão.', 'danger')
-            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                   limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                   count_nao_adventistas=count_nao_adventistas_para_frontend), 400
 
-        # Se todas as validações passarem, o código continua...
+        # --- VALIDAÇÃO: LIMITE DE JOGADORES NÃO ADVENTISTAS ---
+        if not is_adventista:
+            config = Configuracao.query.first()
+            limite_atual = 0
+            config_nao_definida = False
+
+            if config:
+                if time.modalidade == 'Futebol Masculino':
+                    limite_atual = getattr(config, 'limite_nao_adv_fut_masc', limite_fut_masc_default)
+                elif time.modalidade == 'Futebol Feminino':
+                    limite_atual = getattr(config, 'limite_nao_adv_fut_fem', limite_fut_fem_default)
+                elif time.modalidade == 'Vôlei Misto':
+                    limite_atual = getattr(config, 'limite_nao_adv_volei_misto', limite_volei_misto_default)
+                else:
+                    limite_atual = 0
+            else:
+                config_nao_definida = True
+                if time.modalidade == 'Futebol Masculino':
+                    limite_atual = limite_fut_masc_default
+                elif time.modalidade == 'Futebol Feminino':
+                    limite_atual = limite_fut_fem_default
+                elif time.modalidade == 'Vôlei Misto':
+                    limite_atual = limite_volei_misto_default
+                else:
+                    limite_atual = 0
+
+            jogadores_nao_adv_existentes = Jogador.query.filter_by(time_id=time.id, is_adventista=False).count()
+
+            if jogadores_nao_adv_existentes >= limite_atual:
+                flash(
+                    f"Você já cadastrou o limite de {limite_atual} jogador(es) não adventista(s) no time de {time.modalidade}, conforme o boletim informativo. Portanto, não poderá cadastrar esse jogador.",
+                    'danger')
+                # Retorna aqui com status 400
+                return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                       limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                       count_nao_adventistas=count_nao_adventistas_para_frontend), 400
+
+            if config_nao_definida:
+                flash(
+                    'Aviso: As configurações de limite de jogadores não adventistas não foram definidas pelo administrador. Limites padrão aplicados.',
+                    'warning')
+
+        # --- FIM DAS VALIDAÇÕES ---
+
+        # Se todas as validações passarem, processa o upload e salva o jogador
         foto_url, foto_identidade_url = None, None
         try:
             if foto_file and allowed_file(foto_file.filename):
@@ -717,7 +835,10 @@ def cadastro_jogador(token):
                 foto_identidade_url = upload_and_get_shared_link(foto_identidade_file)
         except Exception as e:
             flash(f'Erro ao enviar imagens para o Dropbox: {e}', 'danger')
-            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data), 400
+            # Retorna aqui com status 400
+            return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data=form_data,
+                                   limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                   count_nao_adventistas=count_nao_adventistas_para_frontend), 400
 
         novo_jogador = Jogador(
             nome_completo=nome_completo, telefone=telefone, cpf=cpf, rg=rg,
@@ -727,10 +848,44 @@ def cadastro_jogador(token):
         db.session.add(novo_jogador)
         db.session.commit()
         flash('Jogador cadastrado com sucesso!', 'success')
+
         return redirect(url_for('ver_time', time_id=time.id))
 
-    return render_template('cadastro_jogador.html', time=time, perfil='lider', form_data={})
+    # --- Este bloco é executado APENAS se request.method == 'GET' ---
+    # Calcula as variáveis de frontend para a carga inicial da página (GET)
+    config_current = Configuracao.query.first()
 
+    # Atualiza count_nao_adventistas_para_frontend para o GET inicial
+    count_nao_adventistas_para_frontend = Jogador.query.filter_by(time_id=time.id, is_adventista=False).count()
+
+    if config_current:
+        if time.modalidade == 'Futebol Masculino':
+            limite_nao_adventistas_para_frontend = getattr(config_current, 'limite_nao_adv_fut_masc',
+                                                           limite_fut_masc_default)
+        elif time.modalidade == 'Futebol Feminino':
+            limite_nao_adventistas_para_frontend = getattr(config_current, 'limite_nao_adv_fut_fem',
+                                                           limite_fut_fem_default)
+        elif time.modalidade == 'Vôlei Misto':
+            limite_nao_adventistas_para_frontend = getattr(config_current, 'limite_nao_adv_volei_misto',
+                                                           limite_volei_misto_default)
+        else:
+            limite_nao_adventistas_para_frontend = 0
+    else:
+        if time.modalidade == 'Futebol Masculino':
+            limite_nao_adventistas_para_frontend = limite_fut_masc_default
+        elif time.modalidade == 'Futebol Feminino':
+            limite_nao_adventistas_para_frontend = limite_fut_fem_default
+        elif time.modalidade == 'Vôlei Misto':
+            limite_nao_adventistas_para_frontend = limite_volei_misto_default
+        else:
+            limite_nao_adventistas_para_frontend = 0
+
+    return render_template('cadastro_jogador.html',
+                           time=time,
+                           perfil='lider',
+                           form_data={},  # form_data é vazio para GET inicial
+                           limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                           count_nao_adventistas=count_nao_adventistas_para_frontend)
 
 @app.route('/editar_jogador/<int:jogador_id>', methods=['GET', 'POST'])
 @login_required
@@ -743,25 +898,36 @@ def editar_jogador(jogador_id):
         flash('As edições para este time foram encerrada.', 'warning')
         return redirect(url_for('ver_time', time_id=time.id))
 
+    # Inicializa form_data e variáveis de frontend ANTES do bloco POST
+    form_data = {}
+    limite_nao_adventistas_para_frontend = 0
+    count_nao_adventistas_para_frontend = 0  # Será atualizado abaixo
+
+    # Define os defaults para os limites (caso config não exista ou atributos sejam None)
+    limite_fut_masc_default = 1
+    limite_fut_fem_default = 2
+    limite_volei_misto_default = 1
+
     if request.method == 'POST':
-        form_data = request.form.to_dict()
+        form_data = request.form.to_dict()  # Atualiza form_data com os dados do POST
         nome_completo = form_data.get('nome_completo')
         telefone = form_data.get('telefone')
         cpf = form_data.get('cpf')
         rg = form_data.get('rg')
         data_nascimento_str = form_data.get('data_nascimento')
-        is_adventista = 'is_adventista' in form_data
+        is_adventista = 'is_adventista' in form_data  # is_adventista do FORM (novo valor)
         is_capitao = 'is_capitao' in form_data
         foto_file = request.files.get('foto')
         foto_identidade_file = request.files.get('foto_identidade')
 
-        # --- INÍCIO DAS VALIDAÇÕES ---
-        # Cada bloco 'if' verifica uma condição. Se for inválida, ele retorna e para a execução.
-
+        # --- Suas validações existentes ---
         if not data_nascimento_str:
             flash('A data de nascimento é obrigatória.', 'danger')
-            return render_template('editar_jogador.html', jogador=jogador,
-                                   perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+            return render_template('editar_jogador.html',
+                                   jogador=jogador, perfil='lider' if not current_user.is_admin else 'admin',
+                                   form_data=form_data,
+                                   limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                   count_nao_adventistas=count_nao_adventistas_para_frontend), 400
 
         try:
             data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
@@ -774,42 +940,54 @@ def editar_jogador(jogador_id):
                     flash(f'Erro: O jogador precisa ter no mínimo {IDADE_MINIMA} anos.', 'danger')
                     return render_template('editar_jogador.html', jogador=jogador,
                                            perfil='lider' if not current_user.is_admin else 'admin',
-                                           form_data=form_data), 400
+                                           form_data=form_data,
+                                           limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                           count_nao_adventistas=count_nao_adventistas_para_frontend), 400
                 elif idade > IDADE_MAXIMA_PADRAO:
                     jogadores_acima_idade = [p for p in time.jogadores if p.id != jogador.id and p.data_nascimento and (
-                                (data_campeonato - p.data_nascimento).days / 365.25) > IDADE_MAXIMA_PADRAO]
+                            (data_campeonato - p.data_nascimento).days / 365.25) > IDADE_MAXIMA_PADRAO]
                     if len(jogadores_acima_idade) >= MAX_EXCECOES:
                         flash(
                             f'Erro: O time já atingiu o limite de {MAX_EXCECOES} jogadores com mais de {IDADE_MAXIMA_PADRAO} anos.',
                             'danger')
                         return render_template('editar_jogador.html', jogador=jogador,
                                                perfil='lider' if not current_user.is_admin else 'admin',
-                                               form_data=form_data), 400
+                                               form_data=form_data,
+                                               limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                               count_nao_adventistas=count_nao_adventistas_para_frontend), 400
             elif time.modalidade in ['Futebol Feminino', 'Vôlei Misto']:
                 if idade < 15:
                     flash(f'Erro: Para a modalidade "{time.modalidade}", o jogador deve ter no mínimo 15 anos.',
                           'danger')
                     return render_template('editar_jogador.html', jogador=jogador,
                                            perfil='lider' if not current_user.is_admin else 'admin',
-                                           form_data=form_data), 400
+                                           form_data=form_data,
+                                           limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                           count_nao_adventistas=count_nao_adventistas_para_frontend), 400
         except ValueError:
             flash('Formato de data de nascimento inválido.', 'danger')
             return render_template('editar_jogador.html', jogador=jogador,
-                                   perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data), 400
+                                   perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data,
+                                   limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                   count_nao_adventistas=count_nao_adventistas_para_frontend), 400
 
         if cpf and cpf.strip():
             if Jogador.query.filter(Jogador.cpf == cpf.strip(), Jogador.id != jogador_id).first():
                 flash(f'Erro: O CPF {cpf} já pertence a outro jogador.', 'danger')
                 return render_template('editar_jogador.html', jogador=jogador,
                                        perfil='lider' if not current_user.is_admin else 'admin',
-                                       form_data=form_data), 400
+                                       form_data=form_data,
+                                       limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                       count_nao_adventistas=count_nao_adventistas_para_frontend), 400
 
         if rg and rg.strip():
             if Jogador.query.filter(Jogador.rg == rg.strip(), Jogador.id != jogador_id).first():
                 flash(f'Erro: O RG {rg} já pertence a outro jogador.', 'danger')
                 return render_template('editar_jogador.html', jogador=jogador,
                                        perfil='lider' if not current_user.is_admin else 'admin',
-                                       form_data=form_data), 400
+                                       form_data=form_data,
+                                       limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                       count_nao_adventistas=count_nao_adventistas_para_frontend), 400
 
         if is_capitao:
             outro_capitao = Jogador.query.filter(Jogador.time_id == time.id, Jogador.is_capitao == True,
@@ -820,36 +998,84 @@ def editar_jogador(jogador_id):
                     'danger')
                 return render_template('editar_jogador.html', jogador=jogador,
                                        perfil='lider' if not current_user.is_admin else 'admin',
-                                       form_data=form_data), 400
+                                       form_data=form_data,
+                                       limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                       count_nao_adventistas=count_nao_adventistas_para_frontend), 400
+
+        # --- VALIDAÇÃO: LIMITE DE JOGADORES NÃO ADVENTISTAS NA EDIÇÃO ---
+        if not is_adventista:
+            config = Configuracao.query.first()
+            limite_atual = 0
+            config_nao_definida = False
+
+            if config:
+                if time.modalidade == 'Futebol Masculino':
+                    limite_atual = getattr(config, 'limite_nao_adv_fut_masc', limite_fut_masc_default)
+                elif time.modalidade == 'Futebol Feminino':
+                    limite_atual = getattr(config, 'limite_nao_adv_fut_fem', limite_fut_fem_default)
+                elif time.modalidade == 'Vôlei Misto':
+                    limite_atual = getattr(config, 'limite_nao_adv_volei_misto', limite_volei_misto_default)
+                else:
+                    limite_atual = 0
+            else:
+                config_nao_definida = True
+                if time.modalidade == 'Futebol Masculino':
+                    limite_atual = limite_fut_masc_default
+                elif time.modalidade == 'Futebol Feminino':
+                    limite_atual = limite_fut_fem_default
+                elif time.modalidade == 'Vôlei Misto':
+                    limite_atual = limite_volei_misto_default
+                else:
+                    limite_atual = 0
+
+            jogadores_nao_adv_no_time_sem_este = Jogador.query.filter(
+                Jogador.time_id == time.id,
+                Jogador.is_adventista == False,
+                Jogador.id != jogador.id
+            ).count()
+
+            if (jogadores_nao_adv_no_time_sem_este + 1 > limite_atual):
+                flash(
+                    f"Você já cadastrou o limite de {limite_atual} jogador(es) não adventista(s) no time de {time.modalidade}, conforme o boletim informativo. Portanto, não poderá cadastrar/alterar esse jogador.",
+                    'danger')
+                return render_template('editar_jogador.html',
+                                       jogador=jogador, perfil='lider' if not current_user.is_admin else 'admin',
+                                       form_data=form_data,
+                                       limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                       count_nao_adventistas=count_nao_adventistas_para_frontend), 400
+
+            if config_nao_definida:
+                flash(
+                    'Aviso: As configurações de limite de jogadores não adventistas não foram definidas pelo administrador. Limites padrão aplicados.',
+                    'warning')
 
         # --- FIM DAS VALIDAÇÕES ---
-        # Se o código chegou até aqui, todos os dados são válidos. Agora podemos atualizar.
 
-        # Lógica de atualização da foto do jogador
-        if foto_file and allowed_file(foto_file.filename):
-            try:
+        # Se todas as validações passarem, processa o upload e salva o jogador
+        foto_url, foto_identidade_url = None, None
+        try:
+            if foto_file and allowed_file(foto_file.filename):
                 if jogador.foto:
                     old_path = get_path_from_dropbox_url(jogador.foto)
                     delete_from_dropbox(old_path)
-                jogador.foto = upload_and_get_shared_link(foto_file)
-            except Exception as e:
-                flash(f'Erro ao atualizar a foto do jogador: {e}', 'danger')
-                return render_template('editar_jogador.html', jogador=jogador,
-                                       perfil='lider' if not current_user.is_admin else 'admin',
-                                       form_data=form_data), 400
-
-        # Lógica de atualização da foto da identidade
-        if foto_identidade_file and allowed_file(foto_identidade_file.filename):
-            try:
+                foto_url = upload_and_get_shared_link(foto_file)
+            if foto_identidade_file and allowed_file(foto_identidade_file.filename):
                 if jogador.foto_identidade:
                     old_path = get_path_from_dropbox_url(jogador.foto_identidade)
                     delete_from_dropbox(old_path)
-                jogador.foto_identidade = upload_and_get_shared_link(foto_identidade_file)
-            except Exception as e:
-                flash(f'Erro ao atualizar a foto da identidade: {e}', 'danger')
-                return render_template('editar_jogador.html', jogador=jogador,
-                                       perfil='lider' if not current_user.is_admin else 'admin',
-                                       form_data=form_data), 400
+                foto_identidade_url = upload_and_get_shared_link(foto_identidade_file)
+        except Exception as e:
+            # As linhas que adicionamos para o log detalhado
+            print("--- OCORREU UM ERRO DETALHADO AO PROCESSAR IMAGEM ---")
+            traceback.print_exc()
+            print("-----------------------------------------------------")
+
+            # A mensagem de flash original
+            flash(f'Erro interno ao processar imagens. Verifique o terminal para detalhes.', 'danger')
+            return render_template('editar_jogador.html', jogador=jogador,
+                                   perfil='lider' if not current_user.is_admin else 'admin', form_data=form_data,
+                                   limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                                   count_nao_adventistas=count_nao_adventistas_para_frontend), 400
 
         # Atualiza os dados do jogador no banco
         jogador.nome_completo = nome_completo
@@ -859,16 +1085,65 @@ def editar_jogador(jogador_id):
         jogador.is_adventista = is_adventista
         jogador.is_capitao = is_capitao
         jogador.data_nascimento = data_nascimento
+        if foto_url: jogador.foto = foto_url
+        if foto_identidade_url: jogador.foto_identidade = foto_identidade_url
 
         db.session.commit()
         log_admin_action(
             f"Editou jogador '{jogador.nome_completo}' (ID: {jogador.id}) do time '{time.nome_igreja}' (ID: {time.id})")
         flash('Jogador atualizado com sucesso!', 'success')
+
+        # --- SUBSTITUIÇÃO AQUI: REDIRECIONA PARA A PÁGINA DO TIME ---
         return redirect(url_for('ver_time', time_id=time.id))
 
-    # Para requisições GET, apenas renderiza o formulário
-    return render_template('editar_jogador.html', jogador=jogador,
-                           perfil='lider' if not current_user.is_admin else 'admin', form_data={})
+    # --- Este bloco é executado APENAS se request.method == 'GET' ---
+    # Calcula as variáveis de frontend para a carga inicial da página (GET)
+    # form_data é vazio para GET inicial
+    form_data = {}  # Garante que form_data é vazio para GET
+
+
+    config_current = Configuracao.query.first()
+
+    # Atualiza count_nao_adventistas_para_frontend para o GET inicial
+    # Exclui o próprio jogador da contagem para a validação frontend
+    count_nao_adventistas_para_frontend = Jogador.query.filter(
+        Jogador.time_id == time.id,
+        Jogador.is_adventista == False,
+        Jogador.id != jogador.id
+    ).count()
+
+    if jogador.is_adventista == False:  # Se o jogador sendo editado JÁ é não-adventista, ele conta para o frontend
+        count_nao_adventistas_para_frontend += 1
+
+    if config_current:
+        if time.modalidade == 'Futebol Masculino':
+            limite_nao_adventistas_para_frontend = getattr(config_current, 'limite_nao_adv_fut_masc',
+                                                           limite_fut_masc_default)
+        elif time.modalidade == 'Futebol Feminino':
+            limite_nao_adventistas_para_frontend = getattr(config_current, 'limite_nao_adv_fut_fem',
+                                                           limite_fut_fem_default)
+        elif time.modalidade == 'Vôlei Misto':
+            limite_nao_adventistas_para_frontend = getattr(config_current, 'limite_nao_adv_volei_misto',
+                                                           limite_volei_misto_default)
+        else:
+            limite_nao_adventistas_para_frontend = 0
+    else:
+        if time.modalidade == 'Futebol Masculino':
+            limite_nao_adventistas_para_frontend = limite_fut_masc_default
+        elif time.modalidade == 'Futebol Feminino':
+            limite_nao_adventistas_para_frontend = limite_fut_fem_default
+        elif time.modalidade == 'Vôlei Misto':
+            limite_nao_adventistas_para_frontend = limite_volei_misto_default
+        else:
+            limite_nao_adventistas_para_frontend = 0
+
+    return render_template('editar_jogador.html',
+                           jogador=jogador,
+                           perfil='lider' if not current_user.is_admin else 'admin',
+                           form_data=form_data,  # form_data é vazio para GET inicial
+                           limite_nao_adventistas=limite_nao_adventistas_para_frontend,
+                           count_nao_adventistas=count_nao_adventistas_para_frontend)
+
 
 @app.route('/time/<int:time_id>')
 @login_required

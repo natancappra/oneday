@@ -77,7 +77,7 @@
         Configuração de Limites (Não Adventistas)
     </div>
     <div class="card-body">
-        <form action="{{ url_for('config_limites') }}" method="POST">
+        <form action="{{ url_for('config_limites') }}" method="POST" id="form-config-limites">
             <div class="row g-3 align-items-center">
                 <div class="col-auto"><label for="limite_fut_masc" class="col-form-label">Fut. Masculino:</label></div>
                 <div class="col-auto"><input type="number" id="limite_fut_masc" name="limite_nao_adv_fut_masc" class="form-control" value="{{ config.limite_nao_adv_fut_masc or 1 }}" min="0"></div>
@@ -88,7 +88,9 @@
                 <div class="col-auto"><label for="limite_volei" class="col-form-label">Vôlei Misto:</label></div>
                 <div class="col-auto"><input type="number" id="limite_volei" name="limite_nao_adv_volei_misto" class="form-control" value="{{ config.limite_nao_adv_volei_misto or 1 }}" min="0"></div>
 
-                <div class="col-auto"><button type="submit" class="btn btn-success">Salvar Limites</button></div>
+                <div class="col-auto">
+                    <button type="submit" id="btn-salvar-limites" class="btn btn-success">Salvar Limites</button>
+                </div>
             </div>
         </form>
     </div>
@@ -131,8 +133,104 @@
 {% endblock %}
 
 {% block scripts %}
+{{ super() }}
 <script>
     var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
     var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) { return new bootstrap.Tooltip(tooltipTriggerEl) })
+
+    // Lógica para o botão de Salvar Limites
+    document.addEventListener('DOMContentLoaded', function() {
+        const formLimites = document.getElementById('form-config-limites');
+        const btnSalvarLimites = document.getElementById('btn-salvar-limites');
+        const originalBtnClass = 'btn-success';
+        const changedBtnClass = 'btn-warning'; // Ou 'btn-danger' para mais destaque
+        const originalBtnText = 'Salvar Limites';
+        const changedBtnText = 'Alterações não salvas';
+        const savedBtnText = 'Limites Salvos'; // Novo texto para indicar que salvou
+
+        let hasChanges = false; // Estado inicial: sem alterações
+
+        // Armazena os valores iniciais dos inputs na carga da página
+        const initialValues = {};
+        formLimites.querySelectorAll('input[type="number"]').forEach(input => {
+            initialValues[input.name] = input.value;
+        });
+
+        // Função para verificar se há alterações
+        function checkChanges() {
+            let currentChanges = false;
+            formLimites.querySelectorAll('input[type="number"]').forEach(input => {
+                if (input.value !== initialValues[input.name]) {
+                    currentChanges = true;
+                }
+            });
+            hasChanges = currentChanges; // Atualiza o estado global de 'hasChanges'
+
+            if (hasChanges) {
+                btnSalvarLimites.classList.remove(originalBtnClass, 'btn-primary');
+                btnSalvarLimites.classList.add(changedBtnClass);
+                btnSalvarLimites.textContent = changedBtnText;
+            } else { // Se não há mudanças
+                btnSalvarLimites.classList.remove(changedBtnClass);
+                btnSalvarLimites.classList.add(originalBtnClass);
+                btnSalvarLimites.textContent = originalBtnText; // Volta para o texto original se não há mudanças
+            }
+        }
+
+        // Anexar listeners de input para detectar mudanças
+        formLimites.querySelectorAll('input[type="number"]').forEach(input => {
+            input.addEventListener('input', checkChanges);
+        });
+
+        // Lógica de submissão do formulário de limites
+        formLimites.addEventListener('submit', function(e) {
+            // Não chame e.preventDefault() aqui para permitir o submit normal
+            // e deixar o Flask lidar com a mensagem flash de sucesso/erro.
+
+            // Exibir mensagem de confirmação ANTES de enviar o formulário
+            if (!confirm('Deseja realmente salvar estas configurações de limites?')) {
+                e.preventDefault(); // Impede o envio se o usuário cancelar
+                return;
+            }
+
+            // Define o estado do botão para "Salvando..."
+            btnSalvarLimites.classList.remove(changedBtnClass, originalBtnClass);
+            btnSalvarLimites.classList.add('btn-secondary'); // Uma cor neutra para "Salvando"
+            btnSalvarLimites.textContent = "Salvando...";
+
+            // O Flask redirecionará a página após o sucesso/falha, então o JS aqui não precisa fazer mais nada,
+            // apenas aguardar a nova carga da página.
+            // No reload, a mensagem flash aparecerá e o estado do botão será redefinido pelo DOMContentLoaded.
+        });
+
+        // Lógica para lidar com a mensagem flash após o redirecionamento do Flask
+        // Este código será executado após a página ser recarregada pelo Flask.
+        const urlParams = new URLSearchParams(window.location.search);
+        const flashSuccess = urlParams.get('flash_success'); // Assumindo que o Flask adiciona um param na URL
+        const flashDanger = urlParams.get('flash_danger'); // Assumindo que o Flask adiciona um param na URL
+
+        if (flashSuccess || flashDanger) {
+            // Resetar os valores iniciais para que 'checkChanges' funcione corretamente após o save
+            formLimites.querySelectorAll('input[type="number"]').forEach(input => {
+                input.dataset.initialValue = input.value; // Atualiza o valor inicial com o que foi salvo
+                initialValues[input.name] = input.value; // Também atualiza o objeto initialValues
+            });
+            hasChanges = false; // Não há mais mudanças pendentes
+
+            // Definir o texto do botão como "Limites Salvos" por um breve período
+            btnSalvarLimites.classList.remove(changedBtnClass);
+            btnSalvarLimites.classList.add(originalBtnClass); // Volta para a cor verde de sucesso
+            btnSalvarLimites.textContent = savedBtnText;
+
+            setTimeout(() => {
+                if (!hasChanges) { // Volta para o texto original somente se não houver novas alterações
+                    btnSalvarLimites.textContent = originalBtnText;
+                }
+            }, 3000);
+        }
+
+        // Chamada inicial para definir o estado do botão
+        checkChanges();
+    });
 </script>
 {% endblock %}
