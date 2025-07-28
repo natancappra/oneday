@@ -697,7 +697,7 @@ def cadastro_jogador(token):
     count_acima_idade = 0
     MAX_EXCECOES = 2  # O limite definido
     if time.modalidade == 'Futebol Masculino':
-        data_campeonato = date(2025, 6, 23)
+        data_campeonato = date(2025, 8, 2)
         jogadores_acima_idade = [
             p for p in time.jogadores if p.data_nascimento and
                                          (((data_campeonato - p.data_nascimento).days / 365.25) > 35)
@@ -733,7 +733,7 @@ def cadastro_jogador(token):
 
         try:
             data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
-            data_campeonato = date(2025, 6, 23)
+            data_campeonato = date(2025, 8, 2)
             idade = (data_campeonato - data_nascimento).days / 365.25
 
             if time.modalidade == 'Futebol Masculino':
@@ -931,7 +931,7 @@ def editar_jogador(jogador_id):
 
         try:
             data_nascimento = datetime.strptime(data_nascimento_str, '%Y-%m-%d').date()
-            data_campeonato = date(2025, 6, 23)
+            data_campeonato = date(2025, 8, 2)
             idade = (data_campeonato - data_nascimento).days / 365.25
 
             if time.modalidade == 'Futebol Masculino':
