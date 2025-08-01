@@ -1368,6 +1368,7 @@ def toggle_cadastros_globais():
     flash(f'Status de cadastros globais alterado para {"Encerrados" if new_status else "Abertos"}.', 'success')
     return redirect(url_for('admin_master'))
 
+
 @app.route('/admin/relatorio_excel')
 @login_required
 def relatorio_excel():
@@ -1375,36 +1376,33 @@ def relatorio_excel():
         abort(403)
 
     try:
-        # Prepara o arquivo Excel em memória para não salvar no servidor
         output = io.BytesIO()
         writer = pd.ExcelWriter(output, engine='xlsxwriter')
 
-        # --- ABA 1: RELATÓRIO APENAS DOS TIMES ---
+        # --- ABA 1: Times (sem alteração) ---
         times_query = Time.query.order_by(Time.nome_igreja).all()
-        dados_times = []
-        for time in times_query:
-            dados_times.append({
-                'ID do Time': time.id,
-                'Nome da Igreja': time.nome_igreja,
-                'Diretor Jovem': time.diretor_jovem,
-                'Distrito': time.distrito,
-                'Região': time.regiao,
-                'Nome da Base': time.nome_base,
-                'Modalidade': time.modalidade,
-                'Pagamento Confirmado': 'Sim' if time.pagou else 'Não',
-                'Comprovante (Link)': time.comprovante_pagamento if time.comprovante_pagamento else 'N/A',
-                'Cadastro Encerrado pelo Admin': 'Sim' if time.cadastros_encerrados else 'Não'
-            })
-
+        dados_times = [{
+            'ID do Time': time.id,
+            'Nome da Igreja': time.nome_igreja,
+            'Diretor Jovem': time.diretor_jovem,
+            'Distrito': time.distrito,
+            'Região': time.regiao,
+            'Nome da Base': time.nome_base,
+            'Modalidade': time.modalidade,
+            'Pagamento Confirmado': 'Sim' if time.pagou else 'Não',
+            'Comprovante (Link)': time.comprovante_pagamento or 'N/A',
+            'Cadastro Encerrado': 'Sim' if time.cadastros_encerrados else 'Não'
+        } for time in times_query]
         df_times = pd.DataFrame(dados_times)
-        # Escreve os dados dos times na primeira aba
         df_times.to_excel(writer, sheet_name='Times Cadastrados', index=False)
 
-        # --- ABA 2: RELATÓRIO DE TODOS OS JOGADORES ---
-        jogadores_query = db.session.query(Jogador).join(Time).order_by(Time.nome_igreja, Jogador.nome_completo).all()
+        # --- ABA 2: Jogadores (COM AS NOVAS COLUNAS) ---
+        jogadores_query = db.session.query(Jogador).join(Time).order_by(Time.modalidade, Time.nome_igreja,
+                                                                        Jogador.nome_completo).all()
         dados_jogadores = []
         for jogador in jogadores_query:
             dados_jogadores.append({
+                # Colunas que já existiam (mantidas)
                 'Nome do Jogador': jogador.nome_completo,
                 'Telefone': jogador.telefone,
                 'CPF': jogador.cpf,
@@ -1412,23 +1410,25 @@ def relatorio_excel():
                 'Data de Nascimento': jogador.data_nascimento.strftime('%d/%m/%Y') if jogador.data_nascimento else '',
                 'É Adventista?': 'Sim' if jogador.is_adventista else 'Não',
                 'É Capitão?': 'Sim' if jogador.is_capitao else 'Não',
-                'Igreja/Time': jogador.time.nome_igreja,  # Informação do time associado
-                'Distrito': jogador.time.distrito,  # Informação do time associado
-                'Foto do Jogador (Link)': jogador.foto if jogador.foto else 'N/A',
-                'Foto da Identidade (Link)': jogador.foto_identidade if jogador.foto_identidade else 'N/A'
+
+                # --- COLUNAS ACRESCENTADAS ---
+                'Modalidade': jogador.time.modalidade,
+                'Nome da Base/Time': jogador.time.nome_base or jogador.time.nome_igreja,
+                'Nome da Igreja': jogador.time.nome_igreja,
+                'Distrito': jogador.time.distrito,
+                # -----------------------------
+
+                # Colunas que já existiam (mantidas)
+                'Foto do Jogador (Link)': jogador.foto or 'N/A',
+                'Foto da Identidade (Link)': jogador.foto_identidade or 'N/A'
             })
 
         df_jogadores = pd.DataFrame(dados_jogadores)
-        # Escreve os dados dos jogadores na segunda aba
         df_jogadores.to_excel(writer, sheet_name='Jogadores Inscritos', index=False)
 
-        # Salva o arquivo Excel em memória
         writer.close()
         output.seek(0)
-
-        log_admin_action("Gerou relatório Excel com abas de Times e Jogadores.")
-
-        # Envia o arquivo para download direto no navegador
+        log_auditoria("Gerou relatório Excel com abas de Times e Jogadores.")
         return send_file(
             output,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -1437,8 +1437,8 @@ def relatorio_excel():
         )
 
     except Exception as e:
+        log_auditoria(f"Falha ao gerar relatório Excel: {e}")
         flash(f'Ocorreu um erro ao gerar o relatório: {e}', 'danger')
-        log_admin_action(f"Falha ao gerar relatório Excel: {e}")
         return redirect(url_for('admin_master'))
 
 
