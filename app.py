@@ -29,7 +29,7 @@ from wtforms import PasswordField
 # --- CONFIGURAÇÕES MANUAIS DE TEMPO (COLE AS 3 LINHAS AQUI) ---
 INTERVALO_JOGOS_FUTEBOL_MINUTOS = 12
 HORA_INICIO_JOGOS = 8  # <<-- Mude a HORA de início aqui (formato 24h)
-MINUTO_INICIO_JOGOS = 30 # <<-- Mude o MINUTO de início aqui
+MINUTO_INICIO_JOGOS = 45 # <<-- Mude o MINUTO de início aqui
 # ----------------------------------------------------------------
 
 REGIAO_OPCOES = [
@@ -2045,6 +2045,33 @@ def visualizar_grupos(modalidade):
                            campeao=campeao,
                            vice_campeao=vice_campeao,
                            terceiro_lugar=terceiro_lugar)
+
+
+@app.route('/time_publico/<int:time_id>')
+def visualizar_time_publico(time_id):
+    time = Time.query.get_or_404(time_id)
+
+    # --- ADICIONE ESTAS DUAS LINHAS DE TESTE ---
+    print(f"DEBUG: Verificando time: '{time.nome_base or time.nome_igreja}' (ID: {time.id})")
+    print(f"DEBUG: Lista de jogadores encontrada no banco para este time: {time.jogadores}")
+    # ---------------------------------------------
+
+    # Separa o capitão dos outros jogadores
+    capitao = None
+    outros_jogadores = []
+    for jogador in time.jogadores:
+        if jogador.is_capitao:
+            capitao = jogador
+        else:
+            outros_jogadores.append(jogador)
+
+    # Ordena os outros jogadores por nome para manter a consistência
+    outros_jogadores.sort(key=lambda x: x.nome_completo)
+
+    return render_template('time_publico.html',
+                           time=time,
+                           capitao=capitao,
+                           outros_jogadores=outros_jogadores)
 
 @app.route('/api/dados_mata_mata/<modalidade>')
 def api_dados_mata_mata(modalidade):

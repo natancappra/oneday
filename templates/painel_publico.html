@@ -28,7 +28,7 @@
                                     {% for c in grupo.classificacao_ordenada %}
                                     <tr>
                                         <th>{{ loop.index }}</th>
-                                        <td>{{ c.time.nome_igreja }}</td>
+                                        <td><a href="{{ url_for('visualizar_time_publico', time_id=c.time.id) }}">{{ c.time.nome_base or c.time.nome_igreja }}</a></td>
                                         <td><strong>{{ c.pontos }}</strong></td>
                                         <td>{{ c.jogos_disputados }}</td>
                                         <td>{{ c.vitorias }}</td>
@@ -46,6 +46,12 @@
                 </div>
             </div>
             {% endfor %}
+        </div>
+    <div class="text-muted text-center mt-3">
+            <small>
+                <b>P:</b> Pontos | <b>J:</b> Jogos | <b>V:</b> Vitórias | <b>E:</b> Empates | <b>D:</b> Derrotas |
+                <b>GP/PP:</b> Gols/Pontos Pró | <b>GC/PC:</b> Gols/Pontos Contra | <b>SG/SP:</b> Saldo de Gols/Pontos
+            </small>
         </div>
     {% endif %}
 

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Elenco - {{ time.nome_base or time.nome_igreja }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .player-grid {
+        display: grid;
+        /* Cria colunas dinâmicas de no mínimo 120px */
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 25px;
+        text-align: center;
+    }
+    .player-card img {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%; /* Deixa a foto redonda */
+        object-fit: cover;
+        border: 3px solid #dee2e6; /* Borda cinza padrão */
+        margin-bottom: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,.1);
+    }
+    .captain-card img {
+        width: 120px;
+        height: 120px;
+        border-color: #ffc107; /* Borda dourada para o capitão */
+    }
+    .player-card .player-name {
+        font-weight: bold;
+        font-size: 0.9rem;
+        line-height: 1.2;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 class="titulo-pagina">Elenco: {{ time.nome_base or time.nome_igreja }}</h2>
+<p class="text-muted">Modalidade: {{ time.modalidade }}</p>
+<hr>
+
+{% if capitao %}
+    <h3 class="mt-4 mb-3 text-center">Capitão</h3>
+    <div class="d-flex justify-content-center mb-5">
+        <div class="player-card captain-card">
+            <img src="{{ capitao.foto or url_for('static', filename='img/default_logo.png') }}" alt="Foto de {{ capitao.nome_completo }}">
+            <div class="player-name">{{ capitao.nome_completo }}</div>
+        </div>
+    </div>
+    <h3 class="mt-4 mb-3 text-center">Jogadores</h3>
+{% else %}
+    <h3 class="mt-4 mb-3 text-center">Elenco</h3>
+{% endif %}
+
+<div class="player-grid">
+    {% for jogador in outros_jogadores %}
+    <div class="player-card">
+        <img src="{{ jogador.foto or url_for('static', filename='img/default_logo.png') }}" alt="Foto de {{ jogador.nome_completo }}">
+        <div class="player-name">{{ jogador.nome_completo }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="text-center">
+    <a href="{{ url_for('visualizar_grupos', modalidade=time.modalidade) }}" class="btn btn-secondary mt-5">Voltar ao Painel da Modalidade</a>
+</div>
+{% endblock %}
