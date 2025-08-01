@@ -27,7 +27,7 @@ from wtforms import PasswordField
 # --- Constantes do Campeonato ---
 
 # --- CONFIGURAÇÕES MANUAIS DE TEMPO (COLE AS 3 LINHAS AQUI) ---
-INTERVALO_JOGOS_FUTEBOL_MINUTOS = 12
+INTERVALO_JOGOS_FUTEBOL_MINUTOS = 20
 HORA_INICIO_JOGOS = 8  # <<-- Mude a HORA de início aqui (formato 24h)
 MINUTO_INICIO_JOGOS = 45 # <<-- Mude o MINUTO de início aqui
 # ----------------------------------------------------------------
