@@ -10,7 +10,7 @@
         padding-bottom: 20px;
     }
     .group-col {
-        min-width: 280px;
+        min-width: 300px; /* Aumenta a largura para caber mais info */
         background-color: #f8f9fa;
         border-radius: 8px;
         padding: 15px;
@@ -25,17 +25,31 @@
         border: 1px solid #ddd;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 15px; /* Aumenta o espaçamento */
     }
     .team-logo-sm {
-        width: 30px;
-        height: 30px;
+        width: 35px; /* Aumenta um pouco o logo */
+        height: 35px;
         border-radius: 50%;
         object-fit: cover;
+        flex-shrink: 0; /* Impede que o logo encolha */
     }
     .ghost-card {
         opacity: 0.4;
         background: #c8ebfb;
+    }
+    /* --- NOVOS ESTILOS PARA OS DETALHES --- */
+    .team-info {
+        display: flex;
+        flex-direction: column;
+        line-height: 1.2;
+    }
+    .team-name {
+        font-weight: bold;
+    }
+    .team-details {
+        font-size: 0.8rem;
+        color: #6c757d;
     }
 </style>
 {% endblock %}
@@ -49,9 +63,13 @@
         <h4 class="text-center mb-3">Times Sem Grupo ({{ times_sem_grupo|length }})</h4>
         <div id="times-sem-grupo" class="list-group">
             {% for time in times_sem_grupo %}
+            {# --- ESTRUTURA DO CARD ALTERADA AQUI --- #}
             <div class="team-card" data-id="{{ time.id }}">
                 <img src="{{ time.imagem or url_for('static', filename='img/default_logo.png') }}" class="team-logo-sm">
-                <span>{{ time.nome_base or time.nome_igreja }}</span>
+                <div class="team-info">
+                    <span class="team-name">{{ time.nome_base or time.nome_igreja }}</span>
+                    <span class="team-details">{{ time.distrito or 'Sem Distrito' }} | {{ time.regiao or 'Sem Região' }}</span>
+                </div>
             </div>
             {% endfor %}
         </div>
@@ -77,17 +95,17 @@
 {{ super() }}
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 <script>
+    // ... (o script de salvar e arrastar continua o mesmo, sem alterações) ...
     document.addEventListener('DOMContentLoaded', function () {
         const groupColumns = document.querySelectorAll('.list-group');
         const saveButton = document.getElementById('salvar-grupos-btn');
 
-        // Inicializa o SortableJS em todas as colunas
         groupColumns.forEach(col => {
             new Sortable(col, {
                 group: 'shared',
                 animation: 150,
                 ghostClass: 'ghost-card',
-                onEnd: updateAllCounts // Atualiza contadores ao mover
+                onEnd: updateAllCounts
             });
         });
 
@@ -142,7 +160,6 @@
             });
         });
 
-        // Inicializa a contagem
         updateAllCounts();
     });
 </script>
