@@ -11,45 +11,55 @@
         Ações Principais do Torneio
     </div>
     <div class="card-body">
-        <div class="d-flex justify-content-start align-items-center gap-2 flex-wrap">
+       <div class="d-flex justify-content-start align-items-center gap-2 flex-wrap">
 
-            <form action="{{ url_for('toggle_cadastros_globais') }}" method="POST" class="d-inline mb-0">
-                {% if config.cadastros_globais_encerrados %}
-                    <button type="submit" class="btn btn-primary" onclick="return confirm('Isso irá desbloquear os cadastros, permitindo edições. Deseja continuar?')">Editar Cadastros</button>
-                {% else %}
-                    <button type="submit" class="btn btn-danger" onclick="return confirm('Isso irá BLOQUEAR os cadastros e edições para TODOS os times. Deseja continuar?')">Bloquear Cadastros</button>
-                {% endif %}
-            </form>
+    {# Botão de Bloquear Cadastros #}
+    <form action="{{ url_for('toggle_cadastros_globais') }}" method="POST" class="d-inline mb-0">
+        {% if config.cadastros_globais_encerrados %}
+            <button type="submit" class="btn btn-secondary" onclick="return confirm('Isso irá desbloquear os cadastros. Deseja continuar?')">Desbloquear Cadastros</button>
+        {% else %}
+            <button type="submit" class="btn btn-dark" onclick="return confirm('Isso irá BLOQUEAR os cadastros para TODOS os times. Deseja continuar?')">Bloquear Cadastros</button>
+        {% endif %}
+    </form>
 
-            {% if quadras_configuradas %}
-                <form action="{{ url_for('gerar_e_salvar_chaveamento') }}" method="POST" class="d-inline mb-0">
-                    {% if torneio_gerado %}
-                        <button type="submit" class="btn btn-danger" onclick="return confirm('Isso irá apagar e RECRIAR todo o torneio. Tem certeza?');">Recriar Torneio</button>
-                    {% else %}
-                        <button type="submit" class="btn btn-primary">Gerar Torneio</button>
-                    {% endif %}
-                </form>
-            {% else %}
-                <span class="d-inline-block" tabindex="0" data-bs-toggle="tooltip" title="Você precisa salvar a configuração de quadras primeiro.">
-                    <button type="button" class="btn btn-primary" disabled>Gerar Torneio</button>
-                </span>
-            {% endif %}
+    {# Botão para o fluxo detalhado (Manual ou Automático por modalidade) #}
+    <a href="{{ url_for('escolher_modalidade_grupos') }}" class="btn btn-success">Gerar / Recriar Torneio (Detalhado)</a>
 
-            <a href="{{ url_for('ver_chaveamento_admin') }}" class="btn btn-primary">Visualizar/Editar Placares</a>
+    {# NOVO Botão de Sorteio Rápido e Automático para TUDO #}
+    {% if quadras_configuradas %}
+        <form action="{{ url_for('gerar_tudo_automatico_handler') }}" method="POST" class="d-inline mb-0">
+            <button type="submit" class="btn btn-primary" onclick="return confirm('Isso irá apagar e recriar AUTOMATICAMENTE o torneio para TODAS as modalidades. Tem certeza?');">
+                Sorteio Rápido (Automático)
+            </button>
+        </form>
+    {% else %}
+        <span class="d-inline-block" tabindex="0" data-bs-toggle="tooltip" title="Você precisa salvar a configuração de quadras com valor maior que 0 para as modalidades ativas.">
+            <button type="button" class="btn btn-primary" disabled>Sorteio Rápido (Automático)</button>
+        </span>
+    {% endif %}
 
-            <div class="btn-group">
-                <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                    Ver Grupos (Admin)
-                </button>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="{{ url_for('visualizar_grupos', modalidade='Futebol Masculino') }}">Futebol Masculino</a></li>
-                    <li><a class="dropdown-item" href="{{ url_for('visualizar_grupos', modalidade='Futebol Feminino') }}">Futebol Feminino</a></li>
-                    <li><a class="dropdown-item" href="{{ url_for('visualizar_grupos', modalidade='Vôlei Misto') }}">Vôlei Misto</a></li>
-                </ul>
-            </div>
+    {# Botão Vermelho para Zerar #}
+    <form action="{{ url_for('limpar_torneio_route') }}" method="POST" class="d-inline mb-0">
+        <button type="submit" class="btn btn-danger" onclick="return confirm('ATENÇÃO! Isso irá apagar TODOS os jogos e grupos, mas manterá os times cadastrados. Deseja continuar?');">
+            Zerar Torneio
+        </button>
+    </form>
 
-            <a href="{{ url_for('portal') }}" class="btn btn-outline-secondary" target="_blank">Ver Portal Público</a>
-        </div>
+    {# Botões de Visualização #}
+    <a href="{{ url_for('ver_chaveamento_admin') }}" class="btn btn-outline-primary">Visualizar/Editar Placares</a>
+    <div class="btn-group">
+        <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            Ver Grupos (Admin)
+        </button>
+        <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('visualizar_grupos', modalidade='Futebol Masculino') }}">Futebol Masculino</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('visualizar_grupos', modalidade='Futebol Feminino') }}">Futebol Feminino</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('visualizar_grupos', modalidade='Vôlei Misto') }}">Vôlei Misto</a></li>
+        </ul>
+    </div>
+    <a href="{{ url_for('portal') }}" class="btn btn-outline-secondary" target="_blank">Ver Portal Público</a>
+
+</div>
     </div>
 </div>
 

@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block title %}Escolher Modalidade para Montar Grupos{% endblock %}
+
+{% block content %}
+<h2 class="titulo-pagina">Montar Grupos Manualmente</h2>
+<p>Selecione a modalidade para a qual você deseja definir os grupos manualmente. Isso irá apagar qualquer chaveamento existente para essa modalidade.</p>
+
+<div class="list-group mt-4">
+    {# Este bloco 'if' verifica se a lista de modalidades não está vazia #}
+    {% if modalidades %}
+        {# Este loop 'for' cria um link para cada modalidade encontrada #}
+        {% for modalidade in modalidades %}
+            <a href="{{ url_for('escolher_metodo_geracao', modalidade=modalidade) }}" class="list-group-item list-group-item-action">
+                Configurar Grupos para <strong>{{ modalidade }}</strong>
+            </a>
+        {% endfor %}
+    {% else %}
+        {# Esta mensagem aparece se nenhum time for encontrado #}
+        <div class="alert alert-warning text-center">
+            Nenhum time encontrado no sistema. Por favor, cadastre ou crie times de teste primeiro.
+        </div>
+    {% endif %}
+</div>
+
+<a href="{{ url_for('admin_master') }}" class="btn btn-secondary mt-4">Voltar</a>
+{% endblock %}

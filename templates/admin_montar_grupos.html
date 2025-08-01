@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% block title %}Montar Grupos - {{ modalidade }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .group-container {
+        display: flex;
+        gap: 20px;
+        overflow-x: auto;
+        padding-bottom: 20px;
+    }
+    .group-col {
+        min-width: 280px;
+        background-color: #f8f9fa;
+        border-radius: 8px;
+        padding: 15px;
+        border: 1px solid #dee2e6;
+    }
+    .team-card {
+        background-color: #fff;
+        padding: 10px 15px;
+        border-radius: 5px;
+        margin-bottom: 10px;
+        cursor: grab;
+        border: 1px solid #ddd;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .team-logo-sm {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    .ghost-card {
+        opacity: 0.4;
+        background: #c8ebfb;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 class="titulo-pagina">Montar Grupos para {{ modalidade }}</h2>
+<p>Arraste os times da coluna "Times Sem Grupo" para os grupos desejados. Distribua os times de forma que os grupos fiquem balanceados.</p>
+
+<div class="group-container mt-4">
+    <div class="group-col">
+        <h4 class="text-center mb-3">Times Sem Grupo ({{ times_sem_grupo|length }})</h4>
+        <div id="times-sem-grupo" class="list-group">
+            {% for time in times_sem_grupo %}
+            <div class="team-card" data-id="{{ time.id }}">
+                <img src="{{ time.imagem or url_for('static', filename='img/default_logo.png') }}" class="team-logo-sm">
+                <span>{{ time.nome_igreja }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {% for grupo in grupos %}
+    <div class="group-col">
+        <h4 class="text-center mb-3">{{ grupo.nome }} (<span id="count-{{ grupo.id }}">0</span>/{{ (times|length / grupos|length)|round|int }})</h4>
+        <div id="grupo-{{ grupo.id }}" class="list-group" data-group-id="{{ grupo.id }}">
+            {# Os times arrastados aparecerão aqui #}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="mt-4">
+    <button id="salvar-grupos-btn" class="btn btn-primary">Salvar Grupos e Gerar Jogos</button>
+    <a href="{{ url_for('admin_master') }}" class="btn btn-secondary">Cancelar</a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const groupColumns = document.querySelectorAll('.list-group');
+        const saveButton = document.getElementById('salvar-grupos-btn');
+
+        // Inicializa o SortableJS em todas as colunas
+        groupColumns.forEach(col => {
+            new Sortable(col, {
+                group: 'shared',
+                animation: 150,
+                ghostClass: 'ghost-card',
+                onEnd: updateAllCounts // Atualiza contadores ao mover
+            });
+        });
+
+        function updateAllCounts() {
+            document.querySelectorAll('[data-group-id]').forEach(groupCol => {
+                const groupId = groupCol.dataset.groupId;
+                const countSpan = document.getElementById(`count-${groupId}`);
+                if (countSpan) {
+                    countSpan.textContent = groupCol.children.length;
+                }
+            });
+        }
+
+        saveButton.addEventListener('click', function () {
+            const groupData = {};
+            let totalAssigned = 0;
+            const totalTeams = {{ times|length }};
+
+            document.querySelectorAll('[data-group-id]').forEach(groupCol => {
+                const groupId = groupCol.dataset.groupId;
+                const teamIds = Array.from(groupCol.children).map(card => card.dataset.id);
+                groupData[groupId] = teamIds;
+                totalAssigned += teamIds.length;
+            });
+
+            if (totalAssigned !== totalTeams) {
+                alert('Erro: Todos os times devem ser alocados em um grupo antes de salvar.');
+                return;
+            }
+
+            saveButton.disabled = true;
+            saveButton.textContent = 'Salvando...';
+
+            fetch("{{ url_for('salvar_grupos_manualmente') }}", {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    modalidade: '{{ modalidade }}',
+                    grupos: groupData
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Grupos salvos e jogos gerados com sucesso!');
+                    window.location.href = "{{ url_for('ver_chaveamento_admin') }}";
+                } else {
+                    alert('Erro ao salvar: ' + data.message);
+                    saveButton.disabled = false;
+                    saveButton.textContent = 'Salvar Grupos e Gerar Jogos';
+                }
+            });
+        });
+
+        // Inicializa a contagem
+        updateAllCounts();
+    });
+</script>
+{% endblock %}

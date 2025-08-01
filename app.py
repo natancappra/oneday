@@ -6,136 +6,114 @@ from werkzeug.utils import secure_filename
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
 from flask_migrate import Migrate
-from flask import current_app
-from flask import Flask, render_template, redirect, url_for, request, abort, flash, send_file, jsonify, has_request_context
+from flask import Flask, render_template, redirect, url_for, request, abort, flash, jsonify, has_request_context
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer as Serializer
-from wtforms import PasswordField, BooleanField, StringField
-from wtforms.validators import DataRequired, Optional, Email, Length
+from wtforms import PasswordField
 from itertools import combinations
 import json
 import io
 import random
 import math
 import config
-from flask import (Flask, request, render_template, redirect, url_for, flash, session)
 import pandas as pd
 from extensions import db
 from models import User, Time, Jogador, Game, Configuracao, Grupo, Classificacao
 import dropbox
 from PIL import Image
 import traceback
+from wtforms import PasswordField
 
 # --- Constantes do Campeonato ---
-REGIAO_OPCOES = [
-    "Região 1 | Moving - Regional Natan Cappra",
-    "Região 2 | I Am - Regional Daniel Martins",
-    "Região 3 | Chamados - Regional Roberta Pedroso",
-    "Região 4 | Together - Regional Maycon Lilo",
-    "Região 5 | Reaviva - Regional Sônia Ribeiro",
-    "Região 6 | Bethel - Regional Matheus Felipe",
-    "Região 7 | Tô Ligado - Regional Regis Nogara",
-    "Região 8 | Forgiven - Regional Jeferson Martins",
-]
 
+# --- CONFIGURAÇÕES MANUAIS DE TEMPO (COLE AS 3 LINHAS AQUI) ---
+INTERVALO_JOGOS_FUTEBOL_MINUTOS = 12
+HORA_INICIO_JOGOS = 8  # <<-- Mude a HORA de início aqui (formato 24h)
+MINUTO_INICIO_JOGOS = 30 # <<-- Mude o MINUTO de início aqui
+# ----------------------------------------------------------------
+
+REGIAO_OPCOES = [
+    "Região 1 | Moving - Regional Natan Cappra", "Região 2 | I Am - Regional Daniel Martins",
+    "Região 3 | Chamados - Regional Roberta Pedroso", "Região 4 | Together - Regional Maycon Lilo",
+    "Região 5 | Reaviva - Regional Sônia Ribeiro", "Região 6 | Bethel - Regional Matheus Felipe",
+    "Região 7 | Tô Ligado - Regional Regis Nogara", "Região 8 | Forgiven - Regional Jeferson Martins",
+]
 LINK_PAGAMENTO_PADRAO = "https://eventodaigreja.com.br/ILRJ81"
 
-# --- Criação e configuração do app ---
+# --- Criação e Configuração do App ---
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
+app.config.from_object(config)
+basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = 'sua_chave_secreta_aqui'
+app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
+app.config['SECRET_KEY'] = 'vkexidzlrxtpyarh'
 
-# Configurações iniciais das quadras (serão setadas via admin_master)
-app.config['NUM_QUADRAS_FUTEBOL'] = 3
-app.config['NUM_QUADRAS_VOLEI'] = 3
-
-# --- Configuração de E-mail (Flask-Mail) ---
-app.config.from_object(config)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db' # Mantemos esta linha aqui por enquanto
-app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads') # E esta
-mail = Mail(app) # Inicializa a extensão
-
-# --- Inicialização das extensões ---
-
+# --- Inicialização das Extensões ---
+mail = Mail(app)
 db.init_app(app)
 migrate = Migrate(app, db, render_as_batch=True)
-
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
-
 admin = Admin(app, name='Painel Admin', template_mode='bootstrap4')
 
-# Este é o bloco de código correto em app.py
 
+# --- Configuração do Flask-Admin ---
 class AdminModelView(ModelView):
     def is_accessible(self):
-        return current_user.is_authenticated and current_user.username == 'Natan' and current_user.is_admin
-
+        return current_user.is_authenticated and current_user.is_admin
     def inaccessible_callback(self, name, **kwargs):
-        flash('Acesso negado. Apenas o administrador principal (Natan) pode acessar esta área.', 'danger')
         return redirect(url_for('login'))
 
 class UserModelView(AdminModelView):
-    # Exclua o password_hash do formulário e da exibição da coluna na lista
-    form_excluded_columns = ['times', 'password_hash']
+    # Colunas a não serem exibidas na lista de usuários
     column_exclude_list = ['password_hash']
+    # Colunas a serem excluídas dos formulários (o hash da senha e a lista de times)
+    form_excluded_columns = ['password_hash', 'times']
 
-    # --- CAMPOS DO FORMULÁRIO DE CRIAÇÃO ---
-    # Aqui, listamos os campos na ordem desejada.
-    # 'password' é o campo que vamos adicionar manualmente via form_extra_fields.
-    form_create_rules = ['username', 'email', 'password',
-                         'is_admin']  # Use LISTA [] ao invés de TUPLA () para flexibilidade
-
-    # --- CAMPOS DO FORMULÁRIO DE EDIÇÃO ---
-    # Para edição, não precisamos da senha como obrigatória, mas queremos poder alterá-la.
-    form_edit_rules = ['username', 'email', 'is_admin', 'password']  # Use LISTA []
-
-    # --- DEFINIÇÃO EXPLÍCITA DE CAMPOS EXTRAS/SOBRESCRITOS ---
-    # Aqui é onde resolvemos o erro 'AttributeError: 'tuple' object has no attribute 'items''
-    # e garantimos que os campos sejam do tipo certo e com validadores corretos.
+    # Campo extra para o formulário que não existe diretamente no modelo
+    # Isso diz ao Flask-Admin: "Crie um campo de senha chamado 'password'"
     form_extra_fields = {
-        'password': PasswordField('Senha', validators=[Optional()]),  # Campo de senha, opcional para edição
-        'username': StringField('Nome de Usuário', validators=[DataRequired(), Length(max=80)]),
-        'email': StringField('Email', validators=[DataRequired(), Email(), Length(max=120)]),
-        'is_admin': BooleanField('É Administrador')
+        'password': PasswordField('Nova Senha (deixe em branco para não alterar)')
     }
 
-    # --- LÓGICA PARA PROCESSAR A SENHA ---
-    # Este método é chamado antes de salvar o modelo no banco de dados.
-    # Ele faz o hash da senha se uma nova senha for fornecida no formulário.
+    # Regras para o formulário de CRIAÇÃO (exige a nova senha)
+    form_create_rules = ('username', 'email', 'is_admin', 'password')
+
+    # Regras para o formulário de EDIÇÃO (também permite alterar a senha)
+    form_edit_rules = ('username', 'email', 'is_admin', 'password')
+
+    # Função que é chamada ao salvar o formulário
     def on_model_change(self, form, model, is_created):
-        if form.password.data:  # Se o campo 'password' do formulário tem dados
-            model.set_password(form.password.data)  # Use o método do seu modelo User para setar a senha
+        # Se o campo de senha foi preenchido, atualiza o hash da senha
+        if form.password.data:
+            model.set_password(form.password.data)
 
-        # Garante que is_admin seja salvo corretamente se for alterado via form_extra_fields
-        if 'is_admin' in form and form.is_admin.data is not None:
-            model.is_admin = form.is_admin.data
-
-        super(UserModelView, self).on_model_change(form, model, is_created)
-
-
-# REGISTRO CORRETO DAS VIEWS
 admin.add_view(UserModelView(User, db.session))
 admin.add_view(AdminModelView(Time, db.session))
 admin.add_view(AdminModelView(Jogador, db.session))
 admin.add_view(AdminModelView(Game, db.session))
 
+
+# --- Funções de Apoio (Helpers) ---
 @app.template_filter('from_json')
 def from_json_filter(value):
     if value:
-        try:
-            return json.loads(value)
-        except (json.JSONDecodeError, TypeError):
-            return None
+        try: return json.loads(value)
+        except (json.JSONDecodeError, TypeError): return None
     return None
 
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
+def log_auditoria(acao):
+    timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    if has_request_context() and current_user.is_authenticated:
+        print(f"AUDITORIA: {'Admin' if current_user.is_admin else 'Usuário'} '{current_user.username}' realizou a ação: {acao} em {timestamp}")
+    else:
+        print(f"AUDITORIA: [SISTEMA] Ação automática: {acao} em {timestamp}")
 
 @app.route('/request_reset', methods=['GET', 'POST'])
 def request_reset():
@@ -190,6 +168,39 @@ def reset_token(token):
     return render_template('reset_token.html')
 
 # --- Funções Auxiliares ---
+
+def limpar_estrutura_torneio():
+    """Helper que apaga jogos, grupos e classificações, mas mantém os times."""
+    try:
+        # Apaga em uma ordem que respeita as dependências do banco
+        Game.query.delete()
+        Classificacao.query.delete()
+        Grupo.query.delete()
+        # Desassocia todos os times de seus grupos antigos
+        for time in Time.query.all():
+            time.grupo_id = None
+        db.session.commit()
+        log_auditoria("Estrutura do torneio (jogos, grupos, classificação) foi zerada.")
+        return True
+    except Exception as e:
+        db.session.rollback()
+        log_auditoria(f"Falha ao zerar estrutura do torneio: {e}")
+        return False
+
+
+@app.route('/admin/limpar_torneio', methods=['POST'])
+@login_required
+def limpar_torneio_route():
+    if not current_user.is_admin:
+        abort(403)
+
+    if limpar_estrutura_torneio():
+        flash("O chaveamento (jogos, grupos e classificação) foi zerado com sucesso! Os times foram mantidos.",
+              "success")
+    else:
+        flash("Ocorreu um erro ao tentar zerar o torneio.", "danger")
+
+    return redirect(url_for('admin_master'))
 
 def get_public_id_from_url(url):
     """Extrai o public_id de uma URL do Cloudinary para permitir a exclusão."""
@@ -359,119 +370,6 @@ def log_admin_action(action_description):
         print(
             f"AUDITORIA: Usuário não admin tentou realizar ação: {action_description} em {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}")
 
-# Função para gerar o chaveamento e salvar no banco de dados
-
-def gerar_rodizio_simples(times_da_modalidade, modalidade, num_quadras):
-    """
-    Cria 1 grupo e gera os jogos de rodízio para um torneio de 3 a 5 times.
-    """
-    from itertools import combinations
-
-    grupo = Grupo(nome="Grupo Único", modalidade=modalidade)
-    db.session.add(grupo)
-    db.session.commit()
-
-    for time in times_da_modalidade:
-        time.grupo_id = grupo.id
-        classificacao = Classificacao(time_id=time.id, grupo_id=grupo.id)
-        db.session.add(classificacao)
-
-    jogos_criados = []
-    quadra_counter = 0
-    ordem_counter = 1
-    for time1, time2 in combinations(times_da_modalidade, 2):
-        quadra_atual = (quadra_counter % num_quadras) + 1
-        jogo = Game(
-            modalidade=modalidade,
-            fase="Rodízio Simples",
-            time_a=time1,
-            time_b=time2,
-            local=f'Quadra {quadra_atual}',  # Adiciona a quadra
-            ordem_na_fase=ordem_counter,  # Adiciona a ordem
-            gols_time_a=0,  # Inicializa o placar
-            gols_time_b=0
-        )
-        jogos_criados.append(jogo)
-        quadra_counter += 1
-        ordem_counter += 1
-
-    db.session.add_all(jogos_criados)
-    db.session.commit()
-    flash(f"Torneio de Rodízio Simples para {modalidade} gerado com sucesso!", "success")
-    return True
-
-
-# Em app.py, substitua a função gerar_fase_de_grupos_6_a_8_times
-
-def gerar_fase_de_grupos_6_a_8_times(times_da_modalidade, modalidade, num_quadras):
-    from itertools import combinations
-    # 1. Cria os dois grupos
-    grupo_a = Grupo(nome="Grupo A", modalidade=modalidade)
-    grupo_b = Grupo(nome="Grupo B", modalidade=modalidade)
-    db.session.add_all([grupo_a, grupo_b])
-    db.session.commit()
-
-    # ... (lógica para distribuir times e criar classificação, sem alteração) ...
-    times_grupo_a, times_grupo_b = [], []
-    for i, time in enumerate(times_da_modalidade):
-        if i % 2 == 0:
-            times_grupo_a.append(time)
-            time.grupo_id = grupo_a.id
-        else:
-            times_grupo_b.append(time)
-            time.grupo_id = grupo_b.id
-    for time in times_da_modalidade:
-        classificacao = Classificacao(time_id=time.id, grupo_id=time.grupo_id)
-        db.session.add(classificacao)
-
-    # 4. Gera os jogos da fase de grupos
-    jogos_criados = []
-    quadra_counter = 0
-    for i, (time1, time2) in enumerate(combinations(times_grupo_a, 2)):
-        quadra_atual = (quadra_counter % num_quadras) + 1
-        jogo = Game(modalidade=modalidade, fase="Fase de Grupos", time_a=time1, time_b=time2,
-                    local=f'Quadra {quadra_atual}', ordem_na_fase=i + 1, gols_time_a=0, gols_time_b=0)
-        jogos_criados.append(jogo)
-        quadra_counter += 1
-
-    for i, (time1, time2) in enumerate(combinations(times_grupo_b, 2)):
-        quadra_atual = (quadra_counter % num_quadras) + 1
-        jogo = Game(modalidade=modalidade, fase="Fase de Grupos", time_a=time1, time_b=time2,
-                    local=f'Quadra {quadra_atual}', ordem_na_fase=i + 1 + len(times_grupo_a), gols_time_a=0,
-                    gols_time_b=0)
-        jogos_criados.append(jogo)
-        quadra_counter += 1
-
-    db.session.add_all(jogos_criados)
-    db.session.commit()
-
-    # <<< --- NOVA ETAPA: Chama a função para criar o chaveamento da Fase Final --- >>>
-    gerar_fase_final_6_a_8_times(modalidade, grupo_a, grupo_b)
-
-    flash(f"Fase de grupos e chave da Fase Final para {modalidade} gerados com sucesso!", "success")
-    return True
-
-def gerar_fase_final_6_a_8_times(modalidade, grupo_a, grupo_b):
-    """
-    Cria a estrutura da Fase Final (Semifinal e Final) para o formato de 6 a 8 times.
-    """
-    # Cria os jogos da semifinal e final vazios
-    semi1 = Game(modalidade=modalidade, fase="Semifinal", ordem_na_fase=1, local="A definir")
-    semi2 = Game(modalidade=modalidade, fase="Semifinal", ordem_na_fase=2, local="A definir")
-    final = Game(modalidade=modalidade, fase="Final", ordem_na_fase=1, local="A definir")
-
-    # Cria a disputa de 3º lugar
-    terceiro_lugar = Game(modalidade=modalidade, fase="Disputa 3º Lugar", ordem_na_fase=1, local="A definir")
-
-    # Liga os jogos
-    semi1.proximo_jogo = final
-    semi2.proximo_jogo = final
-    # Futuramente, os perdedores da semi irão para a disputa de 3º lugar
-
-    db.session.add_all([semi1, semi2, final, terceiro_lugar])
-    db.session.commit()
-
-# --- Rotas de autenticação ---
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -1144,6 +1042,59 @@ def editar_jogador(jogador_id):
                            limite_nao_adventistas=limite_nao_adventistas_para_frontend,
                            count_nao_adventistas=count_nao_adventistas_para_frontend)
 
+@app.route('/admin/config_quadras', methods=['POST'])
+@login_required
+def config_quadras():
+    if not current_user.is_admin:
+        abort(403)
+    config = Configuracao.query.first()
+    if not config:
+        config = Configuracao()
+        db.session.add(config)
+    config.num_quadras_fut_masc = int(request.form.get('num_quadras_fut_masc', 0))
+    config.num_quadras_fut_fem = int(request.form.get('num_quadras_fut_fem', 0))
+    config.num_quadras_volei_misto = int(request.form.get('num_quadras_volei_misto', 0))
+    db.session.commit()
+    log_auditoria(f"Atualizou número de quadras no BD: FutMasc={config.num_quadras_fut_masc}, FutFem={config.num_quadras_fut_fem}, Volei={config.num_quadras_volei_misto}")
+    flash('Número de quadras atualizado com sucesso!', 'success')
+    return redirect(url_for('admin_master'))
+
+@app.route('/admin/gerar_tudo_automatico', methods=['POST'])
+@login_required
+def gerar_tudo_automatico_handler():
+    if not current_user.is_admin:
+        abort(403)
+
+    config = Configuracao.query.first()
+    if not config:
+        flash("É necessário salvar a configuração de quadras primeiro.", "danger")
+        return redirect(url_for('admin_master'))
+
+    # Encontra todas as modalidades que têm times
+    modalidades_com_times = db.session.query(Time.modalidade).distinct().all()
+    modalidades = [m[0] for m in modalidades_com_times]
+
+    if not modalidades:
+        flash("Não há times cadastrados para gerar um torneio.", "warning")
+        return redirect(url_for('admin_master'))
+
+    # Loop para gerar o torneio para cada modalidade encontrada
+    for modalidade in modalidades:
+        num_quadras = 0
+        if modalidade == 'Futebol Masculino':
+            num_quadras = config.num_quadras_fut_masc
+        elif modalidade == 'Vôlei Misto':
+            num_quadras = config.num_quadras_volei_misto
+        # Adicione outras modalidades aqui se necessário
+
+        if num_quadras > 0:
+            print(f"Gerando torneio automático para {modalidade}...")
+            gerar_grupos_e_jogos_automaticamente(modalidade, num_quadras)
+        else:
+            flash(f"Aviso: O torneio para '{modalidade}' não foi gerado porque o número de quadras é 0.", "warning")
+
+    flash("Sorteio rápido executado para todas as modalidades ativas!", "success")
+    return redirect(url_for('ver_chaveamento_admin'))
 
 @app.route('/time/<int:time_id>')
 @login_required
@@ -1327,11 +1278,25 @@ def admin_master():
     times_validos = Time.query.order_by(Time.modalidade, Time.nome_igreja).all()
 
     torneio_gerado = db.session.query(Game.id).first() is not None
-    quadras_configuradas = all([
-        config.num_quadras_fut_masc > 0,
-        config.num_quadras_fut_fem > 0,
-        config.num_quadras_volei_misto > 0
-    ])
+
+    # --- LÓGICA DE VALIDAÇÃO INTELIGENTE ---
+    # Verifica se existem times para cada modalidade
+    tem_times_masc = Time.query.filter_by(modalidade='Futebol Masculino', pagou=True).first() is not None
+    tem_times_fem = Time.query.filter_by(modalidade='Futebol Feminino', pagou=True).first() is not None
+    tem_times_volei = Time.query.filter_by(modalidade='Vôlei Misto', pagou=True).first() is not None
+
+    # Constrói a lista de condições dinamicamente
+    condicoes = []
+    if tem_times_masc:
+        condicoes.append(config.num_quadras_fut_masc > 0)
+    if tem_times_fem:
+        condicoes.append(config.num_quadras_fut_fem > 0)
+    if tem_times_volei:
+        condicoes.append(config.num_quadras_volei_misto > 0)
+
+    # O botão só será habilitado se todas as modalidades COM times tiverem quadras configuradas.
+    # Se uma modalidade não tem times, o número de quadras dela é ignorado.
+    quadras_configuradas = all(condicoes) if condicoes else False
 
     return render_template('admin_master.html',
                            times=times_validos,
@@ -1385,38 +1350,6 @@ def admin_config_time(time_id):
 
     return render_template('admin_config_time.html', time=time)
 
-@app.route('/admin/config_quadras', methods=['POST'])
-@login_required
-def config_quadras():
-    if not current_user.is_admin:
-        abort(403)
-
-    # Busca a única linha de configuração que existe
-    config = Configuracao.query.first()
-    if not config:
-        # Se não existir por algum motivo, cria
-        config = Configuracao()
-        db.session.add(config)
-
-    # Pega os valores do formulário e converte para inteiro
-    # Usamos .get(..., '0') para o caso de o campo vir vazio
-    num_fut_masc = int(request.form.get('num_quadras_fut_masc', '0'))
-    num_fut_fem = int(request.form.get('num_quadras_fut_fem', '0'))
-    num_volei_misto = int(request.form.get('num_quadras_volei_misto', '0'))
-
-    # Atualiza os atributos do objeto de configuração diretamente
-    config.num_quadras_fut_masc = num_fut_masc
-    config.num_quadras_fut_fem = num_fut_fem
-    config.num_quadras_volei_misto = num_volei_misto
-
-    # Salva as mudanças no banco de dados
-    db.session.commit()
-
-    flash('Número de quadras atualizado com sucesso!', 'success')
-    log_auditoria(
-        f"Atualizou número de quadras no BD: FutMasc={num_fut_masc}, FutFem={num_fut_fem}, Volei={num_volei_misto}")
-
-    return redirect(url_for('admin_master'))
 
 @app.route('/admin/toggle_cadastros_globais', methods=['POST'])
 @login_required
@@ -1508,148 +1441,172 @@ def relatorio_excel():
         log_admin_action(f"Falha ao gerar relatório Excel: {e}")
         return redirect(url_for('admin_master'))
 
-# --- Rotas e Lógica para Chaveamento ---
-@app.route('/admin/gerar_chaveamento', methods=['POST'])
+
+def gerar_jogos_para_grupos_prontos(modalidade, num_quadras):
+    """
+    Esta função é chamada DEPOIS que os grupos são montados manualmente.
+    Ela apenas pega os grupos existentes e gera a tabela de jogos.
+    """
+    grupos = Grupo.query.filter_by(modalidade=modalidade).all()
+
+    jogos_por_grupo = {grupo.id: [] for grupo in grupos}
+    for grupo in grupos:
+        times_no_grupo = Time.query.filter_by(grupo_id=grupo.id).all()
+        confrontos_do_grupo = list(combinations(times_no_grupo, 2))
+        random.shuffle(confrontos_do_grupo)
+        jogos_por_grupo[grupo.id] = confrontos_do_grupo
+
+    todos_os_confrontos_intercalados = []
+    max_jogos_por_grupo = max(len(jogos) for jogos in jogos_por_grupo.values()) if jogos_por_grupo else 0
+    for i in range(max_jogos_por_grupo):
+        for grupo_id in jogos_por_grupo:
+            if i < len(jogos_por_grupo[grupo_id]):
+                todos_os_confrontos_intercalados.append(jogos_por_grupo[grupo_id][i])
+
+    # PARA (Nova versão usando as constantes)
+    horario_inicial = datetime.now().replace(hour=HORA_INICIO_JOGOS, minute=MINUTO_INICIO_JOGOS, second=0,
+                                             microsecond=0)
+
+    if 'Futebol' in modalidade:
+        duracao_jogo_min = 20
+        proximo_horario_quadra = {i: horario_inicial for i in range(1, num_quadras + 1)}
+        for i, (time_a, time_b) in enumerate(todos_os_confrontos_intercalados):
+            quadra_agendamento = min(proximo_horario_quadra, key=proximo_horario_quadra.get)
+            horario_agendamento = proximo_horario_quadra[quadra_agendamento]
+            jogo = Game(time_a_id=time_a.id, time_b_id=time_b.id, modalidade=modalidade, fase="Fase de Grupos",
+                        ordem_na_fase=i + 1, local=f"Quadra {quadra_agendamento}", data_hora=horario_agendamento)
+            db.session.add(jogo)
+            proximo_horario_quadra[quadra_agendamento] += timedelta(minutes=duracao_jogo_min)
+    else:  # Vôlei
+        # --- LÓGICA DE SORTEIO DE QUADRAS INICIAIS ---
+        # 1. Cria uma lista com os nomes das quadras
+        quadras_iniciais = [f"Quadra {q + 1}" for q in range(num_quadras)]
+        # 2. Embaralha a lista de quadras
+        random.shuffle(quadras_iniciais)
+
+        for i, (time_a, time_b) in enumerate(todos_os_confrontos_intercalados):
+            jogo = Game(time_a_id=time_a.id, time_b_id=time_b.id, modalidade=modalidade, fase="Fase de Grupos",
+                        ordem_na_fase=i + 1)
+            # Para os primeiros jogos, usa a lista de quadras embaralhada
+            if i < num_quadras:
+                jogo.local = quadras_iniciais[i]  # <-- Atribuição aleatória
+                jogo.data_hora = horario_inicial
+            else:
+                jogo.local = "Na Fila"
+            db.session.add(jogo)
+
+    db.session.commit()
+    log_auditoria(f"Jogos gerados para grupos manuais de {modalidade}.")
+
+
+# Adicione estas duas novas rotas em app.py
+
+@app.route('/admin/escolher_metodo/<modalidade>')
 @login_required
-def gerar_e_salvar_chaveamento():
+def escolher_metodo_geracao(modalidade):
+    if not current_user.is_admin:
+        abort(403)
+    return render_template('admin_escolher_metodo.html', modalidade=modalidade)
+
+
+@app.route('/admin/gerar_automatico/<modalidade>', methods=['POST'])
+@login_required
+def gerar_automatico_handler(modalidade):
     if not current_user.is_admin:
         abort(403)
 
-    # --- LÓGICA CORRIGIDA PARA BUSCAR CONFIGURAÇÃO ---
     config = Configuracao.query.first()
-    if not config or not all([config.num_quadras_fut_masc, config.num_quadras_fut_fem, config.num_quadras_volei_misto]):
-        flash('Erro: O número de quadras para todas as modalidades deve ser configurado antes de gerar o torneio.',
-              'danger')
-        return redirect(url_for('admin_master'))
+    num_quadras = 0
+    if modalidade == 'Futebol Masculino':
+        num_quadras = config.num_quadras_fut_masc
+    elif modalidade == 'Vôlei Misto':
+        num_quadras = config.num_quadras_volei_misto
 
-    # Limpa os jogos e grupos antigos
-    Game.query.delete()
-    Grupo.query.delete()
-    Classificacao.query.delete()
+    if num_quadras > 0:
+        gerar_grupos_e_jogos_automaticamente(modalidade, num_quadras)
+        flash(f"Grupos para {modalidade} gerados automaticamente com sucesso!", "success")
+    else:
+        flash(f"Configure o número de quadras para {modalidade} antes de gerar o torneio.", "danger")
+
+    return redirect(url_for('ver_chaveamento_admin'))
+
+@app.route('/admin/escolher_modalidade_grupos')
+@login_required
+def escolher_modalidade_grupos():
+    if not current_user.is_admin:
+        abort(403)
+
+    modalidades_com_times = db.session.query(Time.modalidade).distinct().all()
+    modalidades = [m[0] for m in modalidades_com_times]
+
+    # --- ADICIONE ESTA LINHA DE TESTE AQUI ---
+    print(f"DEBUG: Modalidades encontradas no banco: {modalidades}")
+    # -----------------------------------------
+
+    return render_template('admin_escolher_modalidade.html', modalidades=modalidades)
+
+def gerar_grupos_e_jogos_automaticamente(modalidade, num_quadras):
+    """
+    FUNÇÃO PARA SORTEIO AUTOMÁTICO:
+    Sorteia os times em grupos de forma aleatória e depois gera os jogos.
+    """
+    # Limpa dados antigos da modalidade para garantir um começo limpo
+    Game.query.filter_by(modalidade=modalidade).delete()
+    # Encontra e deleta classificações e grupos antigos da modalidade
+    grupos_antigos = Grupo.query.filter_by(modalidade=modalidade).all()
+    for grupo in grupos_antigos:
+        Classificacao.query.filter_by(grupo_id=grupo.id).delete()
+        db.session.delete(grupo)
     db.session.commit()
 
-    # Pega o número de quadras do objeto de configuração
-    num_quadras_fut_masc = config.num_quadras_fut_masc
-    num_quadras_fut_fem = config.num_quadras_fut_fem
-    num_quadras_volei_misto = config.num_quadras_volei_misto
-
-    # O resto da sua lógica de geração de chaveamento continua aqui...
-    gerar_chaveamento_para_modalidade('Futebol Masculino', num_quadras_fut_masc)
-    gerar_chaveamento_para_modalidade('Futebol Feminino', num_quadras_fut_fem)
-    gerar_chaveamento_para_modalidade('Vôlei Misto', num_quadras_volei_misto)
-
-    flash('Chaveamento gerado/recriado com sucesso para todas as modalidades!', 'success')
-    log_auditoria("Gerou/Recriou o chaveamento completo.")
-    return redirect(url_for('admin_master'))
-
-
-# Em app.py
-
-def gerar_chaveamento_para_modalidade(modalidade, num_quadras):
-    """
-    Função principal que gera a fase de grupos para uma modalidade específica,
-    usando um algoritmo de Round-Robin e criando os jogos RODADA POR RODADA.
-    """
-    # --- Parte 1: Setup dos grupos (continua igual) ---
+    # Esta função agora contém toda a lógica de geração automática que já construímos
     times_da_modalidade = Time.query.filter_by(modalidade=modalidade, pagou=True).all()
-    if len(times_da_modalidade) < 3:
-        flash(f'Não há times suficientes (mínimo 3) na modalidade {modalidade} para gerar um torneio.', 'warning')
+    num_times = len(times_da_modalidade)
+
+    if num_times < 3:
+        flash(f'Erro para {modalidade}: São necessários pelo menos 3 times.', 'danger')
         return
 
+    # Lógica para definir o número de grupos
+    if num_times >= 15:
+        num_grupos = 4
+    elif 12 <= num_times <= 14:
+        num_grupos = 3
+    else:
+        num_grupos = math.ceil(num_times / 4.0)
+
+    print(f"Gerando {int(num_grupos)} grupos automaticamente para {modalidade}...")
     random.shuffle(times_da_modalidade)
-    num_times = len(times_da_modalidade)
-    num_grupos_ideal = math.ceil(num_times / 4)
 
     grupos_criados = []
-    for i in range(num_grupos_ideal):
-        nome_grupo = f"Grupo {chr(65 + i)}"
-        novo_grupo = Grupo(nome=nome_grupo, modalidade=modalidade)
-        db.session.add(novo_grupo)
-        grupos_criados.append(novo_grupo)
+    for i in range(int(num_grupos)):
+        grupo = Grupo(nome=f"Grupo {chr(65 + i)}", modalidade=modalidade)
+        db.session.add(grupo)
+        grupos_criados.append(grupo)
     db.session.commit()
 
     for i, time in enumerate(times_da_modalidade):
-        grupo_atual = grupos_criados[i % len(grupos_criados)]
-        time.grupo_id = grupo_atual.id
-        classificacao = Classificacao(time_id=time.id, grupo_id=grupo_atual.id)
+        grupo_destino = grupos_criados[i % int(num_grupos)]
+        time.grupo_id = grupo_destino.id
+        classificacao = Classificacao(time_id=time.id, grupo_id=grupo_destino.id)
         db.session.add(classificacao)
     db.session.commit()
 
-    # --- Parte 2: Geração de Jogos (ALGORITMO NOVO E CORRIGIDO) ---
-
-    todos_os_grupos = Grupo.query.filter_by(modalidade=modalidade).all()
-    datas_jogos = [date.today() + timedelta(days=7), date.today() + timedelta(days=14),
-                   date.today() + timedelta(days=21)]
-
-    # 1. Pré-calcula todos os confrontos de todas as rodadas para todos os grupos
-    calendario_de_rodadas = []
-    num_max_rodadas = 0
-
-    for grupo in todos_os_grupos:
-        times_no_grupo = Time.query.filter_by(grupo_id=grupo.id).all()
-
-        if len(times_no_grupo) % 2 != 0:
-            times_no_grupo.append(None)  # Adiciona time "fantasma" para grupos com times ímpares
-
-        num_rodadas_grupo = len(times_no_grupo) - 1
-        if num_rodadas_grupo > num_max_rodadas:
-            num_max_rodadas = num_rodadas_grupo
-
-        rodadas_do_grupo = []
-        for i in range(num_rodadas_grupo):
-            rodadas_do_grupo.append([])
-
-        metade = len(times_no_grupo) // 2
-        for i in range(num_rodadas_grupo):
-            metade1 = times_no_grupo[:metade]
-            metade2 = times_no_grupo[metade:]
-            metade2.reverse()
-
-            for j in range(metade):
-                rodadas_do_grupo[i].append((metade1[j], metade2[j]))
-
-            # Rotaciona a lista para a proxima rodada
-            times_no_grupo.insert(1, times_no_grupo.pop())
-
-        calendario_de_rodadas.append(rodadas_do_grupo)
-
-    # 2. Cria os jogos no banco de dados, rodada por rodada, para garantir a numeração sequencial
-    jogo_ordem_global = 1
-    for i in range(num_max_rodadas):
-        rodada_num_atual = i + 1
-        data_jogo_rodada = datas_jogos[i % len(datas_jogos)]
-
-        for j, jogos_do_grupo_na_rodada in enumerate(calendario_de_rodadas):
-            if i < len(jogos_do_grupo_na_rodada):
-                for confronto in jogos_do_grupo_na_rodada[i]:
-                    time_a, time_b = confronto
-
-                    if time_a and time_b:  # Garante que não é um jogo com o time "fantasma"
-                        local_jogo = f"Quadra {(jogo_ordem_global % num_quadras) + 1}"
-
-                        novo_jogo = Game(
-                            time_a_id=time_a.id,
-                            time_b_id=time_b.id,
-                            modalidade=modalidade,
-                            fase=f"Rodada {rodada_num_atual}",
-                            data_hora=datetime.combine(data_jogo_rodada, datetime.min.time()),
-                            local=local_jogo,
-                            ordem_na_fase=jogo_ordem_global
-                        )
-                        db.session.add(novo_jogo)
-                        jogo_ordem_global += 1
-
-    db.session.commit()
+    # Após os grupos serem criados e populados, gera os jogos
+    gerar_jogos_para_grupos_prontos(modalidade, num_quadras)
+    log_auditoria(f"Grupos e jogos para {modalidade} gerados automaticamente.")
 
 def gerar_fase_mata_mata(modalidade):
-    """
-    Função INTELIGENTE que gera o mata-mata correto (Quartas ou Semi)
-    com base no número de times e nas regras do PDF.
-    VERSÃO SEGURA para ser chamada por scripts.
-    """
-    print(f"Iniciando geração do mata-mata para {modalidade}...")
+    # Trava de segurança para evitar duplicatas (sem alteração)
+    jogos_mata_mata_existentes = Game.query.filter(
+        Game.modalidade == modalidade,
+        Game.fase.in_(['Quartas de Final', 'Semifinal', 'Final'])
+    ).first()
+    if jogos_mata_mata_existentes:
+        print(f"Mata-mata para {modalidade} já existe. Geração pulada.")
+        return
 
-    times_participantes = Time.query.filter_by(modalidade=modalidade, pagou=True).count()
+    print(f"Iniciando geração do mata-mata para {modalidade}...")
     grupos = Grupo.query.filter_by(modalidade=modalidade).order_by(Grupo.nome).all()
 
     classificados = []
@@ -1665,237 +1622,345 @@ def gerar_fase_mata_mata(modalidade):
         if len(ranking_grupo) > 2:
             terceiros_lugares.append(ranking_grupo[2])
 
-    if 9 <= times_participantes <= 12:
-        if len(terceiros_lugares) < 2:
-            if has_request_context():
-                flash(f'Não foi possível determinar os melhores terceiros para {modalidade}.', 'danger')
-            return
+    if len(grupos) == 3 and len(classificados) == 6 and len(terceiros_lugares) > 0:
+        print("Detectados 3 grupos. Normalizando e classificando os 2 melhores 3ºs lugares...")
 
-        melhores_terceiros = sorted(
-            terceiros_lugares,
-            key=lambda c: (c.pontos, c.saldo_gols, c.gols_pro),
-            reverse=True
-        )[:2]
+        # --- LÓGICA DE NORMALIZAÇÃO CORRIGIDA ---
+        dados_para_ordenacao = []
+        for terceiro in terceiros_lugares:
+            pontos_finais = terceiro.pontos
+            saldo_finais = terceiro.saldo_gols
+            gols_pro_finais = terceiro.gols_pro
+
+            tamanho_grupo = len(terceiro.grupo.times)
+            if tamanho_grupo > 4:  # Lógica de normalização para qualquer grupo maior que 4
+                ranking_do_grupo = sorted(terceiro.grupo.classificacao,
+                                          key=lambda c: (c.pontos, c.saldo_gols, c.gols_pro), reverse=True)
+                ultimo_colocado = ranking_do_grupo[-1]
+
+                jogo_a_descartar = Game.query.filter(
+                    ((Game.time_a_id == terceiro.time_id) & (Game.time_b_id == ultimo_colocado.time_id)) |
+                    ((Game.time_b_id == terceiro.time_id) & (Game.time_a_id == ultimo_colocado.time_id))
+                ).first()
+
+                if jogo_a_descartar and jogo_a_descartar.finalizado:
+                    if jogo_a_descartar.vencedor_id == terceiro.time_id:
+                        pontos_finais -= 3
+                    elif jogo_a_descartar.vencedor_id is None:
+                        pontos_finais -= 1
+
+                    placar_terceiro = jogo_a_descartar.gols_time_a if jogo_a_descartar.time_a_id == terceiro.time_id else jogo_a_descartar.gols_time_b
+                    placar_ultimo = jogo_a_descartar.gols_time_b if jogo_a_descartar.time_a_id == terceiro.time_id else jogo_a_descartar.gols_time_a
+
+                    gols_pro_finais -= placar_terceiro or 0
+                    saldo_finais -= (placar_terceiro or 0) - (placar_ultimo or 0)
+
+            # Guarda o objeto original e sua chave de ordenação (normalizada ou não)
+            dados_para_ordenacao.append({
+                'objeto_classificacao': terceiro,
+                'chave_ordenacao': (pontos_finais, saldo_finais, gols_pro_finais)
+            })
+
+        # Ordena a lista usando a chave de ordenação calculada
+        ordenados = sorted(dados_para_ordenacao, key=lambda x: x['chave_ordenacao'], reverse=True)
+
+        # Pega os 2 melhores objetos de classificação originais
+        melhores_terceiros = [item['objeto_classificacao'] for item in ordenados[:2]]
         classificados.extend(melhores_terceiros)
 
-    if len(classificados) == 8:
-        print(f"Gerando QUARTAS DE FINAL para {modalidade} com 8 classificados.")
-        # ... (lógica para quartas de final, sem alterações aqui)
-
-    elif len(classificados) == 4:
-        print(f"Gerando SEMIFINAIS para {modalidade} com 4 classificados.")
-        id_1_A = classificados[0].time_id;
-        id_2_A = classificados[1].time_id
-        id_1_B = classificados[2].time_id;
-        id_2_B = classificados[3].time_id
-
-        jogo_final = Game(modalidade=modalidade, fase="Final", ordem_na_fase=3)
-        jogo_terceiro_lugar = Game(modalidade=modalidade, fase="Disputa 3º Lugar", ordem_na_fase=4)
-        db.session.add_all([jogo_final, jogo_terceiro_lugar]);
-        db.session.commit()
-
-        semifinal_1 = Game(time_a_id=id_1_A, time_b_id=id_2_B, modalidade=modalidade, fase="Semifinal", ordem_na_fase=1,
-                           proximo_jogo_id=jogo_final.id)
-        semifinal_2 = Game(time_a_id=id_1_B, time_b_id=id_2_A, modalidade=modalidade, fase="Semifinal", ordem_na_fase=2,
-                           proximo_jogo_id=jogo_final.id)
-        db.session.add_all([semifinal_1, semifinal_2])
-
-    else:
-        if has_request_context():
-            flash(
-                f"Número de times classificados ({len(classificados)}) para {modalidade} não é válido para gerar mata-mata.",
-                "danger")
+    if len(classificados) != 8:
+        flash(f"Não foi possível gerar as Quartas de Final. Número de classificados ({len(classificados)}) é inválido.",
+              "danger")
         return
 
+    # O resto da função para criar os jogos continua o mesmo
+    ranking_geral = sorted(classificados, key=lambda c: (c.pontos, c.saldo_gols, c.gols_pro), reverse=True)
+    confrontos_quartas = [(ranking_geral[0].time, ranking_geral[7].time),
+                          (ranking_geral[3].time, ranking_geral[4].time),
+                          (ranking_geral[2].time, ranking_geral[5].time),
+                          (ranking_geral[1].time, ranking_geral[6].time)]
+    final = Game(modalidade=modalidade, fase="Final", ordem_na_fase=1);
+    disputa_terceiro = Game(modalidade=modalidade, fase="Disputa 3º Lugar", ordem_na_fase=1)
+    db.session.add_all([final, disputa_terceiro]);
     db.session.commit()
-
-    # Adiciona a verificação de contexto aqui também
-    if has_request_context():
-        flash(f'Fase de Mata-Mata gerada com sucesso para {modalidade}!', 'success')
-
-    log_auditoria(f"Fase de Mata-Mata gerada para {modalidade}.")
+    semi1 = Game(modalidade=modalidade, fase="Semifinal", ordem_na_fase=1, proximo_jogo_id=final.id);
+    semi2 = Game(modalidade=modalidade, fase="Semifinal", ordem_na_fase=2, proximo_jogo_id=final.id)
+    db.session.add_all([semi1, semi2]);
+    db.session.commit()
+    quartas1 = Game(time_a=confrontos_quartas[0][0], time_b=confrontos_quartas[0][1], modalidade=modalidade,
+                    fase="Quartas de Final", ordem_na_fase=1, proximo_jogo_id=semi1.id)
+    quartas2 = Game(time_a=confrontos_quartas[1][0], time_b=confrontos_quartas[1][1], modalidade=modalidade,
+                    fase="Quartas de Final", ordem_na_fase=2, proximo_jogo_id=semi1.id)
+    quartas3 = Game(time_a=confrontos_quartas[2][0], time_b=confrontos_quartas[2][1], modalidade=modalidade,
+                    fase="Quartas de Final", ordem_na_fase=3, proximo_jogo_id=semi2.id)
+    quartas4 = Game(time_a=confrontos_quartas[3][0], time_b=confrontos_quartas[3][1], modalidade=modalidade,
+                    fase="Quartas de Final", ordem_na_fase=4, proximo_jogo_id=semi2.id)
+    db.session.add_all([quartas1, quartas2, quartas3, quartas4]);
+    db.session.commit()
+    log_auditoria(f"Fase de Mata-Mata (Classificação Geral) gerada para {modalidade}.")
 
 def atualizar_classificacao_e_avancar_time(game):
-    """
-    VERSÃO FINAL E COMPLETA:
-    Processa o resultado, atualiza classificação, avança vencedor E
-    avança o perdedor da semifinal para a disputa de 3º lugar.
-    """
-    if game is None:
-        return
-
-    # Trata placares nulos como 0 para os cálculos
-    gols_a = game.gols_time_a or 0;
-    gols_b = game.gols_time_b or 0
-    sets_a = game.sets_vencidos_a or 0;
-    sets_b = game.sets_vencidos_b or 0
+    if game is None or not game.time_a or not game.time_b: return
 
     vencedor, perdedor, empate = None, None, False
+    placar_a = int(game.gols_time_a or 0)
+    placar_b = int(game.gols_time_b or 0)
 
-    # Determina o vencedor e o perdedor
-    if 'Futebol' in game.modalidade:
-        if gols_a > gols_b:
-            vencedor, perdedor = game.time_a, game.time_b
-        elif gols_b > gols_a:
-            vencedor, perdedor = game.time_b, game.time_a
-        else:
+    # Lógica para determinar vencedor (incluindo pênaltis)
+    if placar_a > placar_b:
+        vencedor, perdedor = game.time_a, game.time_b
+    elif placar_b > placar_a:
+        vencedor, perdedor = game.time_b, game.time_a
+    else:
+        if 'Futebol' in game.modalidade and game.fase != 'Fase de Grupos':
+            if game.pontos_sets:
+                try:
+                    dados_penaltis = json.loads(game.pontos_sets)
+                    penaltis_a = dados_penaltis.get('penaltis_a', 0)
+                    penaltis_b = dados_penaltis.get('penaltis_b', 0)
+                    if penaltis_a > penaltis_b:
+                        vencedor, perdedor = game.time_a, game.time_b
+                    elif penaltis_b > penaltis_a:
+                        vencedor, perdedor = game.time_b, game.time_a
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        elif 'Futebol' in game.modalidade:
             empate = True
-    elif game.modalidade == 'Vôlei Misto':
+
+    if 'Vôlei' in game.modalidade and game.fase not in ['Fase de Grupos', 'Quartas de Final']:
+        sets_a = int(game.sets_vencidos_a or 0);
+        sets_b = int(game.sets_vencidos_b or 0)
         if sets_a > sets_b:
             vencedor, perdedor = game.time_a, game.time_b
-        elif sets_b > sets_a:
+        else:
             vencedor, perdedor = game.time_b, game.time_a
 
     game.vencedor_id = vencedor.id if vencedor else None
 
-    # Atualiza a tabela de classificação (somente na fase de grupos)
-    if "Rodada" in game.fase:
-        classificacao_a = Classificacao.query.filter_by(time_id=game.time_a_id).first()
-        classificacao_b = Classificacao.query.filter_by(time_id=game.time_b_id).first()
-        if classificacao_a and classificacao_b:
-            classificacao_a.jogos_disputados += 1
-            classificacao_b.jogos_disputados += 1
-            if 'Futebol' in game.modalidade:
-                classificacao_a.gols_pro += gols_a;
-                classificacao_a.gols_contra += gols_b
-                classificacao_b.gols_pro += gols_b;
-                classificacao_b.gols_contra += gols_a
-                if empate:
-                    classificacao_a.empates += 1;
-                    classificacao_b.empates += 1
-                elif vencedor == game.time_a:
-                    classificacao_a.vitorias += 1;
-                    classificacao_b.derrotas += 1
-                else:
-                    classificacao_b.vitorias += 1;
-                    classificacao_a.derrotas += 1
-            elif game.modalidade == 'Vôlei Misto':
-                if vencedor == game.time_a:
-                    classificacao_a.vitorias += 1;
-                    classificacao_b.derrotas += 1
-                elif vencedor == game.time_b:
-                    classificacao_b.vitorias += 1;
-                    classificacao_a.derrotas += 1
-
-    # Avança o time no mata-mata
+    # Lógica para avançar vencedor (sem alteração)
     if vencedor and game.proximo_jogo_id:
         proximo_jogo = Game.query.get(game.proximo_jogo_id)
         if proximo_jogo:
-            if game.ordem_na_fase % 2 != 0:
+            if proximo_jogo.time_a_id is None:
                 proximo_jogo.time_a_id = vencedor.id
             else:
                 proximo_jogo.time_b_id = vencedor.id
 
-    # --- LÓGICA CORRIGIDA: Trata o perdedor da semifinal ---
-    if perdedor and game.fase == 'Semifinal':
-        jogo_terceiro_lugar = Game.query.filter_by(modalidade=game.modalidade, fase='Disputa 3º Lugar').first()
-        if jogo_terceiro_lugar:
-            if game.ordem_na_fase == 1:
-                jogo_terceiro_lugar.time_a_id = perdedor.id
-            elif game.ordem_na_fase == 2:
-                jogo_terceiro_lugar.time_b_id = perdedor.id
+    # Lógica para perdedores da semifinal (sem alteração)
+    if perdedor and game.fase == "Semifinal":
+        disputa_terceiro = Game.query.filter_by(modalidade=game.modalidade, fase="Disputa 3º Lugar").first()
+        if disputa_terceiro:
+            if disputa_terceiro.time_a_id is None:
+                disputa_terceiro.time_a_id = perdedor.id
+            else:
+                disputa_terceiro.time_b_id = perdedor.id
 
-    # Dispara o gatilho para criar a próxima fase
-    if "Rodada" in game.fase:
-        jogos_pendentes = Game.query.filter(Game.modalidade == game.modalidade, Game.fase.like('Rodada%'),
-                                            Game.finalizado == False).count()
+    # Lógica de classificação na fase de grupos (sem alteração)
+    if game.fase == "Fase de Grupos":
+        class_a = Classificacao.query.filter_by(time_id=game.time_a_id).first()
+        class_b = Classificacao.query.filter_by(time_id=game.time_b_id).first()
+        if class_a and class_b:
+            class_a.jogos_disputados += 1;
+            class_b.jogos_disputados += 1
+            class_a.gols_pro += placar_a;
+            class_a.gols_contra += placar_b
+            class_b.gols_pro += placar_b;
+            class_b.gols_contra += placar_a
+            if empate:
+                class_a.empates += 1; class_b.empates += 1
+            elif vencedor == game.time_a:
+                class_a.vitorias += 1; class_b.derrotas += 1
+            elif vencedor == game.time_b:
+                class_b.vitorias += 1; class_a.derrotas += 1
+
+    # Lógica da fila dinâmica (sem alteração)
+    quadra_liberada = game.local
+    if quadra_liberada and "Quadra" in quadra_liberada:
+        proximo_jogo_na_fila = Game.query.filter_by(modalidade=game.modalidade, local="Na Fila").order_by(
+            Game.ordem_na_fase).first()
+        if proximo_jogo_na_fila:
+            proximo_jogo_na_fila.local = quadra_liberada
+            proximo_jogo_na_fila.data_hora = datetime.now() + timedelta(minutes=2)
+
+    # --- BLOCO CORRIGIDO ---
+    # Verifica se a fase de grupos terminou para gerar o mata-mata
+    if game.fase == "Fase de Grupos":
+        jogos_pendentes = Game.query.filter(
+            Game.modalidade == game.modalidade,
+            Game.fase == "Fase de Grupos",  # <-- CORRIGIDO
+            Game.finalizado == False  # <-- CORRIGIDO
+        ).count()
         if jogos_pendentes == 0:
+            print(f"Fase de grupos da {game.modalidade} finalizada. Gerando mata-mata...")
             gerar_fase_mata_mata(game.modalidade)
 
     db.session.commit()
     log_auditoria(f"Jogo {game.id} ({game.time_a.nome_igreja} vs {game.time_b.nome_igreja}) finalizado.")
 
+
+# Em app.py
 @app.route('/admin/chaveamento')
 @login_required
 def ver_chaveamento_admin():
     if not current_user.is_admin:
         abort(403)
 
-    # --- Lógica de Ordenação Manual das Fases ---
-    # Definimos a ordem correta, da primeira fase para a última.
-    ordem_fases = ["Rodada 1", "Oitavas de Final", "Quartas de Final", "Semifinal", "Final"]
+    # Dicionários para guardar os jogos organizados
+    jogos_organizados = {
+        'Futebol Masculino': {},
+        'Futebol Feminino': {},
+        'Vôlei Misto': {}
+    }
 
-    # Buscamos os jogos do banco de dados, sem a ordenação alfabética de fase
-    jogos_futebol_raw = Game.query.filter_by(modalidade='Futebol').options(
-        db.joinedload(Game.time_a), db.joinedload(Game.time_b), db.joinedload(Game.vencedor)
+    # --- NOVA LÓGICA DE ORDENAÇÃO ---
+    # 1. Define a ordem correta de exibição
+    ordem_exibicao = ["Grupo A", "Grupo B", "Grupo C", "Grupo D", "Quartas de Final", "Semifinal", "Disputa 3º Lugar",
+                      "Final"]
+
+    todos_os_jogos = Game.query.options(
+        db.joinedload(Game.time_a).joinedload(Time.grupo),
+        db.joinedload(Game.time_b)
     ).order_by(Game.ordem_na_fase).all()
 
-    jogos_volei_raw = Game.query.filter_by(modalidade='Vôlei').options(
-        db.joinedload(Game.time_a), db.joinedload(Game.time_b), db.joinedload(Game.vencedor)
-    ).order_by(Game.ordem_na_fase).all()
+    # 2. Organiza os jogos em um dicionário
+    for jogo in todos_os_jogos:
+        chave = jogo.time_a.grupo.nome if jogo.fase == "Fase de Grupos" and jogo.time_a and jogo.time_a.grupo else jogo.fase
+        if chave not in jogos_organizados[jogo.modalidade]:
+            jogos_organizados[jogo.modalidade][chave] = []
+        jogos_organizados[jogo.modalidade][chave].append(jogo)
 
-    # Agrupamos os jogos, mas mantendo a ordem definida
-    jogos_futebol_por_fase = {}
-    for fase in ordem_fases:
-        jogos_nesta_fase = [j for j in jogos_futebol_raw if j.fase == fase]
-        if jogos_nesta_fase:
-            jogos_futebol_por_fase[fase] = jogos_nesta_fase
-
-    jogos_volei_por_fase = {}
-    for fase in ordem_fases:
-        jogos_nesta_fase = [j for j in jogos_volei_raw if j.fase == fase]
-        if jogos_nesta_fase:
-            jogos_volei_por_fase[fase] = jogos_nesta_fase
-
-    # Esta função agora vai chamar a lógica do chaveamento público e renderizar em um template de admin
-    fut_masc, fut_fem, volei_misto = obter_jogos_visiveis()
+    # 3. Cria uma lista ordenada de chaves para cada modalidade
+    chaves_ordenadas = {}
+    for modalidade, grupos_e_fases in jogos_organizados.items():
+        chaves_ordenadas[modalidade] = [chave for chave in ordem_exibicao if chave in grupos_e_fases]
 
     return render_template('chaveamento_admin.html',
-                           jogos_fut_masc=fut_masc,
-                           jogos_fut_fem=fut_fem,
-                           jogos_volei=volei_misto,
-                           now=datetime.now(timezone.utc))
+                           jogos_organizados=jogos_organizados,
+                           chaves_ordenadas=chaves_ordenadas)
+
+@app.route('/admin/montar_grupos/<modalidade>')
+@login_required
+def montar_grupos_admin(modalidade):
+    if not current_user.is_admin:
+        abort(403)
+
+    # --- LÓGICA DE LIMPEZA ADICIONADA AQUI ---
+    # Garante que, ao entrar na montagem manual, o torneio antigo da modalidade seja apagado.
+    print(f"Limpando torneio antigo para {modalidade} antes de montar novos grupos...")
+    Game.query.filter_by(modalidade=modalidade).delete()
+    grupos_antigos = Grupo.query.filter_by(modalidade=modalidade).all()
+    for g in grupos_antigos:
+        Classificacao.query.filter_by(grupo_id=g.id).delete()
+        db.session.delete(g)
+    db.session.commit()
+    # --- FIM DA LÓGICA DE LIMPEZA ---
+
+    times = Time.query.filter_by(modalidade=modalidade, pagou=True).all()
+    num_times = len(times)
+
+    if num_times < 3:
+        flash(f"Não há times suficientes em {modalidade} para formar grupos.", "warning")
+        return redirect(url_for('admin_master'))
+
+    # Lógica para definir o número de grupos (a mesma que já temos)
+    if num_times >= 15:
+        num_grupos = 4
+    elif 12 <= num_times <= 14:
+        num_grupos = 3
+    elif 9 <= num_times <= 11:
+        num_grupos = 3
+    elif 6 <= num_times <= 8:
+        num_grupos = 2
+    else:
+        num_grupos = 1
+
+    # Cria os grupos vazios
+    grupos_criados = []
+    for i in range(num_grupos):
+        grupo = Grupo(nome=f"Grupo {chr(65 + i)}", modalidade=modalidade)
+        db.session.add(grupo)
+        grupos_criados.append(grupo)
+    db.session.commit()
+
+    return render_template('admin_montar_grupos.html',
+                           modalidade=modalidade,
+                           times=times,
+                           times_sem_grupo=times,
+                           grupos=grupos_criados)
+
+
+@app.route('/api/salvar_grupos', methods=['POST'])
+@login_required
+def salvar_grupos_manualmente():
+    if not current_user.is_admin:
+        return jsonify(success=False, message="Acesso negado"), 403
+
+    data = request.json
+    modalidade = data.get('modalidade')
+    grupos_data = data.get('grupos')
+
+    try:
+        for grupo_id, time_ids in grupos_data.items():
+            for time_id in time_ids:
+                time = Time.query.get(time_id)
+                if time:
+                    time.grupo_id = grupo_id
+                    # Cria a entrada na tabela de classificação
+                    if not Classificacao.query.filter_by(time_id=time_id).first():
+                        classificacao = Classificacao(time_id=time_id, grupo_id=grupo_id)
+                        db.session.add(classificacao)
+        db.session.commit()
+
+        # Agora, chama a função para gerar os jogos com os grupos já montados
+        config = Configuracao.query.first()
+        num_quadras = 0
+        if modalidade == 'Futebol Masculino':
+            num_quadras = config.num_quadras_fut_masc
+        elif modalidade == 'Vôlei Misto':
+            num_quadras = config.num_quadras_volei_misto
+
+        # Chamada para uma nova função que SÓ gera os jogos
+        gerar_jogos_para_grupos_prontos(modalidade, num_quadras)
+
+        return jsonify(success=True)
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(success=False, message=str(e)), 500
 
 @app.route('/admin/editar_resultado/<int:game_id>', methods=['GET', 'POST'])
 @login_required
 def editar_resultado(game_id):
     if not current_user.is_admin:
         abort(403)
-
     game = Game.query.get_or_404(game_id)
-
     if request.method == 'POST':
-        # --- LÓGICA CORRIGIDA PARA LIDAR COM INPUTS VAZIOS ---
+        # Salva placares normais
+        game.gols_time_a = request.form.get('gols_time_a') if request.form.get('gols_time_a') else None
+        game.gols_time_b = request.form.get('gols_time_b') if request.form.get('gols_time_b') else None
+        game.sets_vencidos_a = request.form.get('sets_vencidos_a') if request.form.get('sets_vencidos_a') else None
+        game.sets_vencidos_b = request.form.get('sets_vencidos_b') if request.form.get('sets_vencidos_b') else None
 
-        # Pega a string do formulário
-        gols_a_str = request.form.get('gols_time_a')
-        gols_b_str = request.form.get('gols_time_b')
-        sets_a_str = request.form.get('sets_vencidos_a')
-        sets_b_str = request.form.get('sets_vencidos_b')
+        # --- LÓGICA PARA SALVAR PÊNALTIS SEM MUDAR O BANCO ---
+        penaltis_a_str = request.form.get('penaltis_time_a')
+        penaltis_b_str = request.form.get('penaltis_time_b')
+        if penaltis_a_str and penaltis_b_str:
+            dados_penaltis = {
+                "penaltis_a": int(penaltis_a_str),
+                "penaltis_b": int(penaltis_b_str)
+            }
+            game.pontos_sets = json.dumps(dados_penaltis)  # Salva como texto JSON
 
-        # Tenta converter para inteiro. Se falhar (ex: string vazia), assume 0.
-        try:
-            game.gols_time_a = int(gols_a_str) if gols_a_str and gols_a_str.strip() else None
-        except (ValueError, TypeError):
-            game.gols_time_a = None
-
-        try:
-            game.gols_time_b = int(gols_b_str) if gols_b_str and gols_b_str.strip() else None
-        except (ValueError, TypeError):
-            game.gols_time_b = None
-
-        try:
-            game.sets_vencidos_a = int(sets_a_str) if sets_a_str and sets_a_str.strip() else None
-        except (ValueError, TypeError):
-            game.sets_vencidos_a = None
-
-        try:
-            game.sets_vencidos_b = int(sets_b_str) if sets_b_str and sets_b_str.strip() else None
-        except (ValueError, TypeError):
-            game.sets_vencidos_b = None
-
-        # Pega os outros campos
+        # Lógica para salvar horário e finalizar o jogo (sem alterações)
         horario_str = request.form.get('horario')
         if horario_str and game.data_hora:
-            horas, minutos = map(int, horario_str.split(':'))
-            game.data_hora = game.data_hora.replace(hour=horas, minute=minutos)
-
-        game.pontos_sets = request.form.get('pontos_sets', game.pontos_sets)
-
+            try:
+                horas, minutos = map(int, horario_str.split(':'))
+                game.data_hora = game.data_hora.replace(hour=horas, minute=minutos)
+            except ValueError:
+                flash("Formato de horário inválido. Use HH:MM.", "danger")
         action = request.form.get('action')
         if action == 'finalizar':
             game.finalizado = True
-            # Adicione aqui a sua lógica para definir o vencedor e atualizar a classificação
             atualizar_classificacao_e_avancar_time(game)
 
         db.session.commit()
@@ -1905,8 +1970,6 @@ def editar_resultado(game_id):
     return render_template('editar_resultado_jogo.html', game=game)
 
 # --- Página de Visualização Pública (Sem Login) ---
-
-# Em app.py
 
 @app.route('/portal')
 def portal():
@@ -1926,16 +1989,6 @@ def portal():
     return render_template('portal.html', modalidades=modalidades_ativas)
 
 
-@app.route('/chaveamento_publico')
-def chaveamento_publico_view():
-    fut_masc, fut_fem, volei_misto = obter_jogos_visiveis()
-
-    # Vamos criar um novo template para isso, para não confundir.
-    return render_template('chaveamento_publico_view.html',
-                           jogos_fut_masc=fut_masc,
-                           jogos_fut_fem=fut_fem,
-                           jogos_volei=volei_misto)
-
 @app.route('/grupos/<modalidade>')
 def visualizar_grupos(modalidade):
     grupos = Grupo.query.filter_by(modalidade=modalidade).order_by(Grupo.nome).all()
@@ -1946,21 +1999,38 @@ def visualizar_grupos(modalidade):
             reverse=True
         )
 
-    fases_mata_mata = ['Quartas de Final', 'Semifinal', 'Disputa 3º Lugar', 'Final']
+    jogos_fase_de_grupos_query = Game.query.filter_by(modalidade=modalidade, fase='Fase de Grupos').options(
+        db.joinedload(Game.time_a).joinedload(Time.grupo),
+        db.joinedload(Game.time_b)
+    ).order_by(Game.local, Game.data_hora).all()
+
+    jogos_por_quadra = {}
+    for jogo in jogos_fase_de_grupos_query:
+        quadra = jogo.local if jogo.local else "Na Fila"
+        if quadra not in jogos_por_quadra: jogos_por_quadra[quadra] = []
+        jogos_por_quadra[quadra].append(jogo)
+
+    ordem_fases_mata_mata = ['Quartas de Final', 'Semifinal', 'Disputa 3º Lugar', 'Final']
     tem_fase_final = Game.query.filter(
         Game.modalidade == modalidade,
-        Game.fase.in_(fases_mata_mata)
+        Game.fase.in_(ordem_fases_mata_mata)
     ).first() is not None
 
+    jogos_mata_mata = []
+    if tem_fase_final:
+        jogos_mata_mata = Game.query.filter(
+            Game.modalidade == modalidade,
+            Game.fase.in_(ordem_fases_mata_mata)
+        ).all()
+
+    # Lógica do campeão (sem alterações)
     campeao, vice_campeao, terceiro_lugar = None, None, None
     if tem_fase_final:
         jogo_final = Game.query.filter_by(modalidade=modalidade, fase='Final').first()
         if jogo_final and jogo_final.finalizado and jogo_final.vencedor_id:
             campeao = Time.query.get(jogo_final.vencedor_id)
             outro_time_id = jogo_final.time_b_id if jogo_final.vencedor_id == jogo_final.time_a_id else jogo_final.time_a_id
-            if outro_time_id:
-                vice_campeao = Time.query.get(outro_time_id)
-
+            if outro_time_id: vice_campeao = Time.query.get(outro_time_id)
         jogo_terceiro = Game.query.filter_by(modalidade=modalidade, fase='Disputa 3º Lugar').first()
         if jogo_terceiro and jogo_terceiro.finalizado and jogo_terceiro.vencedor_id:
             terceiro_lugar = Time.query.get(jogo_terceiro.vencedor_id)
@@ -1968,127 +2038,50 @@ def visualizar_grupos(modalidade):
     return render_template('painel_publico.html',
                            grupos=grupos,
                            modalidade=modalidade,
+                           jogos_por_quadra=jogos_por_quadra,
                            tem_fase_final=tem_fase_final,
+                           jogos_mata_mata=jogos_mata_mata,
+                           ordem_fases_mata_mata=ordem_fases_mata_mata,  # <-- NOVA VARIÁVEL
                            campeao=campeao,
                            vice_campeao=vice_campeao,
                            terceiro_lugar=terceiro_lugar)
 
 @app.route('/api/dados_mata_mata/<modalidade>')
 def api_dados_mata_mata(modalidade):
-    fases_mata_mata = ['Quartas de Final', 'Semifinal', 'Final']
-    jogos_mata_mata = Game.query.filter(
-        Game.modalidade == modalidade,
-        Game.fase.in_(fases_mata_mata)
-    ).order_by(Game.ordem_na_fase).all()
+    ordem_fases = ['Quartas de Final', 'Semifinal', 'Final']
+    jogos_mata_mata = Game.query.filter(Game.modalidade == modalidade, Game.fase.in_(ordem_fases)).order_by(Game.fase, Game.ordem_na_fase).all()
+    if not jogos_mata_mata: return jsonify(teams=[], results=[])
 
-    if not jogos_mata_mata:
-        return jsonify(teams=[], results=[])
+    primeira_fase_existente = next((fase for fase in ordem_fases if any(j.fase == fase for j in jogos_mata_mata)), None)
+    if not primeira_fase_existente: return jsonify(teams=[], results=[])
 
-    primeira_fase_nome = jogos_mata_mata[0].fase
-    jogos_primeira_rodada = [j for j in jogos_mata_mata if j.fase == primeira_fase_nome]
-
-    teams = []
-    for jogo in jogos_primeira_rodada:
-        time_a_nome = jogo.time_a.nome_igreja if jogo.time_a else "A definir"
-        time_b_nome = jogo.time_b.nome_igreja if jogo.time_b else "A definir"
-        teams.append([time_a_nome, time_b_nome])
+    jogos_primeira_rodada = [j for j in jogos_mata_mata if j.fase == primeira_fase_existente]
+    teams = [[(j.time_a.nome_igreja if j.time_a else "A definir"), (j.time_b.nome_igreja if j.time_b else "A definir")] for j in jogos_primeira_rodada]
 
     results = []
-    fases_encontradas = sorted(list(set(j.fase for j in jogos_mata_mata)), key=lambda x: fases_mata_mata.index(x))
-
+    fases_encontradas = sorted(list(set(j.fase for j in jogos_mata_mata)), key=lambda x: ordem_fases.index(x))
     for fase in fases_encontradas:
         jogos_da_fase = [j for j in jogos_mata_mata if j.fase == fase]
         rodada_atual = []
         for jogo in jogos_da_fase:
             placar_a, placar_b = None, None
-            if jogo.finalizado:
-                if 'Futebol' in jogo.modalidade:
-                    placar_a = jogo.gols_time_a or 0
-                    placar_b = jogo.gols_time_b or 0
-                else:
-                    placar_a = jogo.sets_vencidos_a or 0
-                    placar_b = jogo.sets_vencidos_b or 0
+            # --- LÓGICA ALTERADA: Mostra o placar mesmo se não estiver finalizado ---
+            if 'Futebol' in jogo.modalidade:
+                if jogo.gols_time_a is not None:
+                    placar_a, placar_b = jogo.gols_time_a, jogo.gols_time_b
+                    if jogo.pontos_sets:
+                        try:
+                            dados_penaltis = json.loads(jogo.pontos_sets)
+                            placar_a = f"{placar_a} ({dados_penaltis.get('penaltis_a')})"
+                            placar_b = f"{placar_b} ({dados_penaltis.get('penaltis_b')})"
+                        except: pass
+            else: # Vôlei
+                placar_a = jogo.sets_vencidos_a if jogo.sets_vencidos_a is not None else jogo.gols_time_a
+                placar_b = jogo.sets_vencidos_b if jogo.sets_vencidos_b is not None else jogo.gols_time_b
             rodada_atual.append([placar_a, placar_b])
         results.append(rodada_atual)
-
     return jsonify(teams=teams, results=results)
 
-@app.route('/torneio/<path:modalidade>')
-def painel_torneio(modalidade):
-    # Verifica se já existem jogos da Fase Final para esta modalidade
-    fases_finais = ["Oitavas de Final", "Quartas de Final", "Semifinal", "Final", "Disputa 3º Lugar"]
-    jogos_fase_final = Game.query.filter(Game.modalidade == modalidade, Game.fase.in_(fases_finais)).first()
-
-    if jogos_fase_final:
-        # Se o mata-mata já foi gerado, mostra a página de chaveamento gráfico
-        # (Futuramente, esta página terá o desenho)
-        return render_template('chaveamento_publico.html', modalidade=modalidade)
-    else:
-        # Se ainda não, mostra a página com os grupos
-        grupos = Grupo.query.filter_by(modalidade=modalidade).order_by(Grupo.nome).all()
-        if not grupos:
-            flash(f"O torneio para {modalidade} ainda não foi gerado.", "warning")
-            return redirect(url_for('portal_publico'))
-
-        for grupo in grupos:
-            grupo.classificacao_ordenada = sorted(
-                grupo.classificacao,
-                key=lambda c: (c.pontos, c.saldo_de_gols, c.gols_pro),
-                reverse=True
-            )
-
-        fases_iniciais = ["Fase de Grupos", "Rodízio Simples"]
-        jogos_dos_grupos = Game.query.filter(Game.modalidade == modalidade, Game.fase.in_(fases_iniciais)).all()
-
-        return render_template('grupos.html',
-                               grupos=grupos,
-                               modalidade=modalidade,
-                               jogos=jogos_dos_grupos)
-
-
-# Em app.py
-
-def obter_jogos_visiveis():
-    """
-    Busca todos os jogos e os separa por modalidade em dicionários,
-    com as fases ordenadas corretamente. VERSÃO FINAL.
-    """
-    # --- LÓGICA CORRIGIDA: Adicionamos a Disputa de 3º Lugar na ordem ---
-    ordem_fases = ["Rodada 1", "Rodada 2", "Rodada 3", "Quartas de Final", "Semifinal", "Disputa 3º Lugar", "Final"]
-
-    jogos_fut_masc = {}
-    jogos_fut_fem = {}
-    jogos_volei = {}
-
-    todos_os_jogos = Game.query.options(
-        db.joinedload(Game.time_a), db.joinedload(Game.time_b), db.joinedload(Game.vencedor)
-    ).all()
-
-    # Futebol Masculino
-    jogos_raw_masc = [j for j in todos_os_jogos if j.modalidade == 'Futebol Masculino']
-    for fase in ordem_fases:
-        jogos_nesta_fase = [j for j in jogos_raw_masc if j.fase == fase]
-        if jogos_nesta_fase:
-            jogos_fut_masc[fase] = sorted(jogos_nesta_fase, key=lambda x: x.ordem_na_fase or 0)
-
-    # Futebol Feminino
-    jogos_raw_fem = [j for j in todos_os_jogos if j.modalidade == 'Futebol Feminino']
-    for fase in ordem_fases:
-        jogos_nesta_fase = [j for j in jogos_raw_fem if j.fase == fase]
-        if jogos_nesta_fase:
-            jogos_fut_fem[fase] = sorted(jogos_nesta_fase, key=lambda x: x.ordem_na_fase or 0)
-
-    # Vôlei Misto
-    jogos_raw_volei = [j for j in todos_os_jogos if j.modalidade == 'Vôlei Misto']
-    for fase in ordem_fases:
-        jogos_nesta_fase = [j for j in jogos_raw_volei if j.fase == fase]
-        if jogos_nesta_fase:
-            jogos_volei[fase] = sorted(jogos_nesta_fase, key=lambda x: x.ordem_na_fase or 0)
-
-    return jogos_fut_masc, jogos_fut_fem, jogos_volei
 
 if __name__ == '__main__':
-    # O modo recomendado de rodar a aplicação é com o comando 'flask run',
-    # que já está no seu script 'reset_and_run_complete.ps1'.
-    # Este bloco é mantido apenas por compatibilidade.
     app.run(debug=True)

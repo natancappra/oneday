@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}Escolher Método de Geração - {{ modalidade }}{% endblock %}
+
+{% block content %}
+<h2 class="titulo-pagina">Gerar Grupos para {{ modalidade }}</h2>
+<p class="lead">Como você deseja criar os grupos para esta modalidade?</p>
+<hr>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body text-center d-flex flex-column">
+                <h4 class="card-title">Gerar Automaticamente</h4>
+                <p class="card-text text-muted mt-2">O sistema irá sortear os times e distribuí-los em grupos de forma aleatória e balanceada.</p>
+                <div class="mt-auto">
+                    <form action="{{ url_for('gerar_automatico_handler', modalidade=modalidade) }}" method="POST" onsubmit="return confirm('Tem certeza que deseja apagar os jogos existentes e gerar novos grupos automaticamente?');">
+                        <button type="submit" class="btn btn-primary btn-lg">Sorteio Automático</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-body text-center d-flex flex-column">
+                <h4 class="card-title">Montar Manualmente</h4>
+                <p class="card-text text-muted mt-2">Você será levado para uma tela para arrastar e soltar os times em cada grupo, conforme o sorteio já realizado.</p>
+                <div class="mt-auto">
+                    <a href="{{ url_for('montar_grupos_admin', modalidade=modalidade) }}" class="btn btn-success btn-lg">Montagem Manual</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<a href="{{ url_for('escolher_modalidade_grupos') }}" class="btn btn-secondary mt-4">Voltar</a>
+{% endblock %}

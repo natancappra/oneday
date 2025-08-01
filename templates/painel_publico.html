@@ -2,119 +2,171 @@
 {% block title %}Painel do Torneio - {{ modalidade }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <h2 class="titulo-pagina mb-0">{{ modalidade }}</h2>
-    <a href="{{ url_for('portal') }}" class="btn btn-sm btn-secondary">Voltar ao Portal</a>
-</div>
+<div id="main-content-container">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="titulo-pagina mb-0">{{ modalidade }}</h2>
+        <a href="{{ url_for('portal') }}" class="btn btn-sm btn-secondary">Voltar ao Portal</a>
+    </div>
 
-{% if grupos %}
-    <h3 class="mt-4">Fase de Grupos</h3>
-    <div class="row row-cols-1 row-cols-md-2 g-4">
-        {% for grupo in grupos %}
-        <div class="col">
-            <div class="card h-100">
-                <div class="card-header fw-bold">{{ grupo.nome }}</div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-sm mb-0">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>#</th><th>Time</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP</th><th>GC</th><th>SG</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for classificacao in grupo.classificacao_ordenada %}
-                                <tr>
-                                    <th>{{ loop.index }}</th>
-                                    <td>{{ classificacao.time.nome_igreja }}</td>
-                                    <td><strong>{{ classificacao.pontos }}</strong></td>
-                                    <td>{{ classificacao.jogos_disputados }}</td>
-                                    <td>{{ classificacao.vitorias }}</td>
-                                    <td>{{ classificacao.empates }}</td>
-                                    <td>{{ classificacao.derrotas }}</td>
-                                    <td>{{ classificacao.gols_pro }}</td>
-                                    <td>{{ classificacao.gols_contra }}</td>
-                                    <td>{{ classificacao.saldo_gols }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+    {# 1. SEÇÃO DAS TABELAS DE CLASSIFICAÇÃO #}
+    {% if grupos %}
+        <h3 class="mt-4">Fase de Grupos - Classificação</h3>
+        <div class="row row-cols-1 row-cols-md-2 g-4">
+            {% for grupo in grupos %}
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-header fw-bold">{{ grupo.nome }}</div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-sm mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>#</th><th>Time</th><th>P</th><th>J</th><th>V</th><th>E</th><th>D</th><th>GP/PP</th><th>GC/PC</th><th>SG/SP</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for c in grupo.classificacao_ordenada %}
+                                    <tr>
+                                        <th>{{ loop.index }}</th>
+                                        <td>{{ c.time.nome_igreja }}</td>
+                                        <td><strong>{{ c.pontos }}</strong></td>
+                                        <td>{{ c.jogos_disputados }}</td>
+                                        <td>{{ c.vitorias }}</td>
+                                        <td>{{ c.empates }}</td>
+                                        <td>{{ c.derrotas }}</td>
+                                        <td>{{ c.gols_pro }}</td>
+                                        <td>{{ c.gols_contra }}</td>
+                                        <td>{{ c.saldo_gols }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
+            {% endfor %}
         </div>
+    {% endif %}
+
+    {# 2. SEÇÃO DE JOGOS (EXIBIÇÃO INTELIGENTE) #}
+
+    {# Se a fase final AINDA NÃO começou, mostra os jogos dos grupos #}
+    {% if not tem_fase_final and jogos_por_quadra %}
+        <hr class="my-5">
+        <h3 class="mt-4 text-center">Jogos da Fase de Grupos</h3>
+        <div class="row justify-content-center">
+            {% for quadra, jogos_na_quadra in jogos_por_quadra.items()|sort %}
+                {% if quadra != 'Na Fila' %}
+                    <div class="col-lg-4">
+                        <h4 class="text-center mb-3">{{ quadra }}</h4>
+                        {% for jogo in jogos_na_quadra %}{% include 'partials/game_card_public.html' %}{% endfor %}
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+        {% if jogos_por_quadra['Na Fila'] %}
+            <div class="row justify-content-center mt-4">
+                <div class="col-lg-8">
+                    <h4 class="text-center mb-3 border-top pt-3">Jogos na Fila (Aguardando Quadra)</h4>
+                    <div class="row row-cols-1 row-cols-md-2 g-3">
+                        {% for jogo in jogos_por_quadra['Na Fila'] %}<div class="col">{% include 'partials/game_card_public.html' %}</div>{% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+
+    {# Se a fase final JÁ COMEÇOU, mostra os jogos do mata-mata E o gráfico #}
+    {% elif tem_fase_final %}
+        <hr class="my-5">
+        <h3 class="mt-4 text-center">Jogos da Fase Final</h3>
+        {% for fase in ordem_fases_mata_mata %}
+            {% set jogos_na_fase = jogos_mata_mata|selectattr('fase', 'equalto', fase)|list %}
+            {% if jogos_na_fase %}
+                {% if fase == 'Final' %}<h4 class="mt-4 text-center border-bottom pb-2">Final (Disputa de 1º e 2º Lugar)</h4>
+                {% elif fase == 'Disputa 3º Lugar' %}<h4 class="mt-4 text-center border-bottom pb-2">Disputa de 3º e 4º Lugar</h4>
+                {% else %}<h4 class="mt-4 text-center border-bottom pb-2">{{ fase }}</h4>
+                {% endif %}
+                <div class="row row-cols-1 row-cols-md-2 justify-content-center g-3 mt-2">
+                    {% for jogo in jogos_na_fase %}<div class="col">{% include 'partials/game_card_public.html' %}</div>{% endfor %}
+                </div>
+            {% endif %}
         {% endfor %}
-    </div>
-{% endif %}
 
-{% if tem_fase_final %}
-    <hr class="my-5">
-    <h3 class="mt-4 text-center">Chaveamento da Fase Final</h3>
-    <div class="chaveamento-container">
-        <div id="chaveamento-grafico-publico"></div>
-    </div>
-{% elif not grupos %}
-    <div class="text-center p-5 border rounded bg-light">
-        <p class="lead">O torneio para esta modalidade ainda não foi gerado.</p>
-    </div>
-{% endif %}
+        {# --- CÓDIGO DO GRÁFICO RESTAURADO AQUI --- #}
+        <hr class="my-5">
+        <h3 class="mt-4 text-center">Chaveamento da Fase Final</h3>
+        <div class="chaveamento-container">
+            <div id="chaveamento-grafico-publico"></div>
+        </div>
+        {# --- FIM DO CÓDIGO DO GRÁFICO --- #}
+    {% endif %}
 
-{% if campeao %}
-<div class="podio-container text-center">
-    <h3 class="mt-4 mb-5">Resultado Final do Campeonato</h3>
-    <div class="row justify-content-center align-items-end">
-        {% if vice_campeao %}
-        <div class="col-md-4 col-lg-3 order-md-1">
-            <div class="podio-card prata">
-                <div class="podio-posicao">2º</div>
-                <img src="{{ vice_campeao.imagem or url_for('static', filename='img/default_logo.png') }}" class="podio-img" alt="Logo {{ vice_campeao.nome_igreja }}">
-                <div class="podio-nome">{{ vice_campeao.nome_igreja }}</div>
-            </div>
-        </div>
-        {% endif %}
-        <div class="col-md-4 col-lg-3 order-md-2">
-            <div class="podio-card ouro">
-                <div class="podio-posicao">🏆 1º 🏆</div>
-                <img src="{{ campeao.imagem or url_for('static', filename='img/default_logo.png') }}" class="podio-img" alt="Logo {{ campeao.nome_igreja }}">
-                <div class="podio-nome">{{ campeao.nome_igreja }}</div>
-            </div>
-        </div>
-        {% if terceiro_lugar %}
-        <div class="col-md-4 col-lg-3 order-md-3">
-            <div class="podio-card bronze">
-                <div class="podio-posicao">3º</div>
-                <img src="{{ terceiro_lugar.imagem or url_for('static', filename='img/default_logo.png') }}" class="podio-img" alt="Logo {{ terceiro_lugar.nome_igreja }}">
-                <div class="podio-nome">{{ terceiro_lugar.nome_igreja }}</div>
-            </div>
-        </div>
-        {% endif %}
-    </div>
+    {# 3. SEÇÃO DO PÓDIO #}
+    {% if campeao %}
+        {# ... (código do pódio) ... #}
+    {% endif %}
 </div>
-{% endif %}
 {% endblock %}
 
-
 {% block scripts %}
-{% if tem_fase_final %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.css" />
-<script src="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.js"></script>
-<script>
-    $(function() {
-        var bracketContainer = $('#chaveamento-grafico-publico');
-        $.getJSON('/api/dados_mata_mata/' + "{{ modalidade }}", function(data) {
-            if (data && data.teams && data.teams.length > 0) {
-                bracketContainer.empty().bracket({
-                    init: data,
-                    skipConsolationRound: true,
-                    teamWidth: 200,
-                    scoreWidth: 40,
-                    matchMargin: 50,
-                    roundMargin: 50
-                });
+
+{# O SCRIPT DO GRÁFICO SÓ É CARREGADO SE A FASE FINAL EXISTIR #}
+{% if tem_fase_final %}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.js"></script>
+    <script>
+        // --- NOVA FUNÇÃO REUTILIZÁVEL PARA DESENHAR O GRÁFICO ---
+        function desenharChaveamento() {
+            var bracketContainer = $('#chaveamento-grafico-publico');
+            if (bracketContainer.length === 0) {
+                return; // Se o container não existir, não faz nada
             }
+
+            $.getJSON('/api/dados_mata_mata/' + "{{ modalidade }}", function(data) {
+                if (data && data.teams && data.teams.length > 0) {
+                    bracketContainer.empty().bracket({
+                        init: data,
+                        skipConsolationRound: true,
+                        teamWidth: 200, scoreWidth: 40,
+                        matchMargin: 50, roundMargin: 50
+                    });
+                }
+            });
+        }
+
+        // Chama a função quando a página carrega pela primeira vez
+        $(function() {
+            desenharChaveamento();
         });
-    });
-</script>
+    </script>
 {% endif %}
+
+{# SCRIPT DE ATUALIZAÇÃO AUTOMÁTICA CORRIGIDO #}
+<script>
+    function recarregarConteudo() {
+        fetch(window.location.href)
+            .then(response => response.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const novoConteudo = doc.querySelector('#main-content-container');
+                const conteudoAtual = document.querySelector('#main-content-container');
+
+                if (novoConteudo && conteudoAtual) {
+                    conteudoAtual.innerHTML = novoConteudo.innerHTML;
+
+                    // --- LINHA DE CORREÇÃO ADICIONADA ---
+                    // Após atualizar o HTML, chama a função para redesenhar o gráfico
+                    if (typeof desenharChaveamento === 'function') {
+                        desenharChaveamento();
+                    }
+                }
+            })
+            .catch(err => console.error('Falha ao recarregar conteúdo:', err));
+    }
+    // Define o intervalo para chamar a função a cada 10 segundos
+    setInterval(recarregarConteudo, 10000);
+</script>
 {% endblock %}
