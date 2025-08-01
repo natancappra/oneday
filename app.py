@@ -6,7 +6,7 @@ from werkzeug.utils import secure_filename
 from flask_admin import Admin
 from flask_admin.contrib.sqla import ModelView
 from flask_migrate import Migrate
-from flask import Flask, render_template, redirect, url_for, request, abort, flash, jsonify, has_request_context
+from flask import Flask, render_template, redirect, url_for, request, abort, flash, jsonify, has_request_context, send_file
 from flask_mail import Mail, Message
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from wtforms import PasswordField
