@@ -218,3 +218,8 @@ db.sqlite3
 
 remover o gerador de dropbox
 generate_refresh_token.py
+simulate_quarter_finals.py
+simulate_group_stage.py
+create_test_teams.py
+clear_championship.py
+run_full_simulation.py
