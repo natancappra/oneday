@@ -51,7 +51,7 @@
             {% for time in times_sem_grupo %}
             <div class="team-card" data-id="{{ time.id }}">
                 <img src="{{ time.imagem or url_for('static', filename='img/default_logo.png') }}" class="team-logo-sm">
-                <span>{{ time.nome_igreja }}</span>
+                <span>{{ time.nome_base or time.nome_igreja }}</span>
             </div>
             {% endfor %}
         </div>
