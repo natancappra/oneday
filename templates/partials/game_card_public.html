@@ -1,19 +1,40 @@
-{# templates/partials/game_card_public.html #}
 <div class="card mb-3">
     <div class="card-body text-center p-2">
         <div class="card-subtitle text-muted" style="font-size: 0.8rem;">
-            {# --- LÓGICA CORRIGIDA --- #}
-            {# Tenta mostrar o nome do grupo. Se não conseguir, mostra o nome da fase. #}
             <strong>{{ jogo.time_a.grupo.nome if jogo.time_a and jogo.time_a.grupo else jogo.fase }}</strong>
-
             | {{ jogo.data_hora.strftime('%H:%M') if jogo.data_hora else 'A definir' }}
         </div>
-        <div class="d-flex justify-content-center align-items-center mt-1">
-            <span class="text-end fw-bold" style="flex: 1;">{{ jogo.time_a.nome_igreja if jogo.time_a else 'A definir' }}</span>
-            <span class="badge bg-dark fs-6 mx-2">{{ jogo.gols_time_a if jogo.gols_time_a is not none else '-' }}</span>
-            <span class="mx-1">vs</span>
-            <span class="badge bg-dark fs-6 mx-2">{{ jogo.gols_time_b if jogo.gols_time_b is not none else '-' }}</span>
-            <span class="text-start fw-bold" style="flex: 1;">{{ jogo.time_b.nome_igreja if jogo.time_b else 'A definir' }}</span>
+
+        <div class="d-flex justify-content-between align-items-center mt-1">
+
+            <div class="text-end" style="flex: 1;">
+                <span class="fw-bold" style="font-size: 1.1rem; display: block;">
+                    {{ jogo.time_a.nome_base or (jogo.time_a.nome_igreja if jogo.time_a else 'A definir') }}
+                </span>
+                <span class="text-muted" style="font-size: 0.8rem; display: block;">
+                    {{ jogo.time_a.nome_igreja if jogo.time_a else '' }}
+                    {% if jogo.time_a and jogo.time_a.distrito and jogo.time_a.nome_igreja %} - {% endif %}
+                    {{ jogo.time_a.distrito if jogo.time_a else '' }}
+                </span>
+            </div>
+
+            <div class="px-2">
+                <span class="badge bg-dark fs-6">{{ jogo.gols_time_a if jogo.gols_time_a is not none else '-' }}</span>
+                <span class="mx-1">vs</span>
+                <span class="badge bg-dark fs-6">{{ jogo.gols_time_b if jogo.gols_time_b is not none else '-' }}</span>
+            </div>
+
+            <div class="text-start" style="flex: 1;">
+                <span class="fw-bold" style="font-size: 1.1rem; display: block;">
+                    {{ jogo.time_b.nome_base or (jogo.time_b.nome_igreja if jogo.time_b else 'A definir') }}
+                </span>
+                <span class="text-muted" style="font-size: 0.8rem; display: block;">
+                    {{ jogo.time_b.nome_igreja if jogo.time_b else '' }}
+                    {% if jogo.time_b and jogo.time_b.distrito and jogo.time_b.nome_igreja %} - {% endif %}
+                    {{ jogo.time_b.distrito if jogo.time_b else '' }}
+                </span>
+            </div>
+
         </div>
     </div>
 </div>
