@@ -47,27 +47,24 @@
             </div>
             {% endfor %}
         </div>
-    <div class="text-muted text-center mt-3">
-            <small>
-                <b>P:</b> Pontos | <b>J:</b> Jogos | <b>V:</b> Vitórias | <b>E:</b> Empates | <b>D:</b> Derrotas |
-                <b>GP/PP:</b> Gols/Pontos Pró | <b>GC/PC:</b> Gols/Pontos Contra | <b>SG/SP:</b> Saldo de Gols/Pontos
-            </small>
+        <div class="text-muted text-center mt-3">
+            <small><b>P:</b> Pontos | <b>J:</b> Jogos | <b>V:</b> Vitórias | <b>E:</b> Empates | <b>D:</b> Derrotas | <b>GP/PP:</b> Gols/Pontos Pró | <b>GC/PC:</b> Gols/Pontos Contra | <b>SG/SP:</b> Saldo de Gols/Pontos</small>
         </div>
     {% endif %}
 
     {# 2. SEÇÃO DE JOGOS (EXIBIÇÃO INTELIGENTE) #}
-
-    {# Se a fase final AINDA NÃO começou, mostra os jogos dos grupos #}
     {% if not tem_fase_final and jogos_por_quadra %}
         <hr class="my-5">
         <h3 class="mt-4 text-center">Jogos da Fase de Grupos</h3>
-        <div class="row justify-content-center">
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
             {% for quadra, jogos_na_quadra in jogos_por_quadra.items()|sort %}
                 {% if quadra != 'Na Fila' %}
-                    <div class="col-lg-4">
-                        <h4 class="text-center mb-3">{{ quadra }}</h4>
-                        {% for jogo in jogos_na_quadra %}{% include 'partials/game_card_public.html' %}{% endfor %}
-                    </div>
+                <div class="col">
+                    <h4 class="text-center mb-3">{{ quadra }}</h4>
+                    {% for jogo in jogos_na_quadra %}
+                        {% include 'partials/game_card_public.html' %}
+                    {% endfor %}
+                </div>
                 {% endif %}
             {% endfor %}
         </div>
@@ -75,14 +72,13 @@
             <div class="row justify-content-center mt-4">
                 <div class="col-lg-8">
                     <h4 class="text-center mb-3 border-top pt-3">Jogos na Fila (Aguardando Quadra)</h4>
-                    <div class="row row-cols-1 row-cols-md-2 g-3">
+                    <div class="row row-cols-1 row-cols-sm-2 g-3">
                         {% for jogo in jogos_por_quadra['Na Fila'] %}<div class="col">{% include 'partials/game_card_public.html' %}</div>{% endfor %}
                     </div>
                 </div>
             </div>
         {% endif %}
 
-    {# Se a fase final JÁ COMEÇOU, mostra os jogos do mata-mata E o gráfico #}
     {% elif tem_fase_final %}
         <hr class="my-5">
         <h3 class="mt-4 text-center">Jogos da Fase Final</h3>
@@ -99,80 +95,120 @@
             {% endif %}
         {% endfor %}
 
-        {# --- CÓDIGO DO GRÁFICO RESTAURADO AQUI --- #}
+        {# --- O GRÁFICO ESTÁ AQUI, NO LUGAR CERTO --- #}
         <hr class="my-5">
         <h3 class="mt-4 text-center">Chaveamento da Fase Final</h3>
         <div class="chaveamento-container">
             <div id="chaveamento-grafico-publico"></div>
         </div>
-        {# --- FIM DO CÓDIGO DO GRÁFICO --- #}
     {% endif %}
 
-    {# 3. SEÇÃO DO PÓDIO #}
+    {# 3. SEÇÃO DO PÓDIO (TAMBÉM ESTÁ AQUI) #}
     {% if campeao %}
-        {# ... (código do pódio) ... #}
+        <div class="podio-container text-center">
+            <h3 class="mt-4 mb-5">Resultado Final do Campeonato</h3>
+            <div class="row justify-content-center align-items-end">
+                {% if vice_campeao %}
+                <div class="col-md-4 col-lg-3 order-md-1">
+                    <div class="podio-card prata">
+                        <div class="podio-posicao">2º</div>
+                        <img src="{{ vice_campeao.imagem or url_for('static', filename='img/default_logo.png') }}" class="podio-img" alt="Logo {{ vice_campeao.nome_igreja }}">
+                        <div class="podio-nome">{{ vice_campeao.nome_base or vice_campeao.nome_igreja }}</div>
+                    </div>
+                </div>
+                {% endif %}
+                <div class="col-md-4 col-lg-3 order-md-2">
+                    <div class="podio-card ouro">
+                        <div class="podio-posicao">🏆 1º 🏆</div>
+                        <img src="{{ campeao.imagem or url_for('static', filename='img/default_logo.png') }}" class="podio-img" alt="Logo {{ campeao.nome_igreja }}">
+                        <div class="podio-nome">{{ campeao.nome_base or campeao.nome_igreja }}</div>
+                    </div>
+                </div>
+                {% if terceiro_lugar %}
+                <div class="col-md-4 col-lg-3 order-md-3">
+                    <div class="podio-card bronze">
+                        <div class="podio-posicao">3º</div>
+                        <img src="{{ terceiro_lugar.imagem or url_for('static', filename='img/default_logo.png') }}" class="podio-img" alt="Logo {{ terceiro_lugar.nome_igreja }}">
+                        <div class="podio-nome">{{ terceiro_lugar.nome_base or terceiro_lugar.nome_igreja }}</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
     {% endif %}
 </div>
 {% endblock %}
 
-{% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 
-{# O SCRIPT DO GRÁFICO SÓ É CARREGADO SE A FASE FINAL EXISTIR #}
-{% if tem_fase_final %}
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.css" />
-    <script src="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.js"></script>
-    <script>
-        // --- NOVA FUNÇÃO REUTILIZÁVEL PARA DESENHAR O GRÁFICO ---
-        function desenharChaveamento() {
-            var bracketContainer = $('#chaveamento-grafico-publico');
-            if (bracketContainer.length === 0) {
-                return; // Se o container não existir, não faz nada
+{% block scripts %}
+    {{ super() }}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+
+    {% if tem_fase_final %}
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.css" />
+        <script src="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.js"></script>
+        <script>
+            function desenharChaveamento() {
+                var bracketContainer = $('#chaveamento-grafico-publico');
+                if (bracketContainer.length === 0) return;
+
+                const screenWidth = $(window).width();
+                let bracketOptions;
+
+                // Define opções diferentes para telas pequenas e grandes
+                if (screenWidth < 768) { // Se for tela de celular
+                    bracketOptions = {
+                        teamWidth: 120,    // Largura menor para o nome
+                        scoreWidth: 25,    // Largura menor para o placar
+                        matchMargin: 30,   // Margem horizontal menor
+                        roundMargin: 35    // Margem entre as rodadas menor
+                    };
+                } else { // Se for tela de desktop
+                    bracketOptions = {
+                        teamWidth: 200,
+                        scoreWidth: 40,
+                        matchMargin: 50,
+                        roundMargin: 50
+                    };
+                }
+
+                $.getJSON('/api/dados_mata_mata/' + "{{ modalidade }}", function(data) {
+                    if (data && data.teams && data.teams.length > 0) {
+                        bracketContainer.empty().bracket({
+                            init: data,
+                            skipConsolationRound: true,
+                            ...bracketOptions // Usa as opções corretas para o tamanho da tela
+                        });
+                    }
+                });
             }
 
-            $.getJSON('/api/dados_mata_mata/' + "{{ modalidade }}", function(data) {
-                if (data && data.teams && data.teams.length > 0) {
-                    bracketContainer.empty().bracket({
-                        init: data,
-                        skipConsolationRound: true,
-                        teamWidth: 200, scoreWidth: 40,
-                        matchMargin: 50, roundMargin: 50
-                    });
-                }
+            // Chama a função quando a página carrega
+            $(function() {
+                desenharChaveamento();
             });
-        }
+        </script>
+    {% endif %}
 
-        // Chama a função quando a página carrega pela primeira vez
-        $(function() {
-            desenharChaveamento();
-        });
-    </script>
-{% endif %}
-
-{# SCRIPT DE ATUALIZAÇÃO AUTOMÁTICA CORRIGIDO #}
-<script>
-    function recarregarConteudo() {
-        fetch(window.location.href)
-            .then(response => response.text())
-            .then(html => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const novoConteudo = doc.querySelector('#main-content-container');
-                const conteudoAtual = document.querySelector('#main-content-container');
-
-                if (novoConteudo && conteudoAtual) {
-                    conteudoAtual.innerHTML = novoConteudo.innerHTML;
-
-                    // --- LINHA DE CORREÇÃO ADICIONADA ---
-                    // Após atualizar o HTML, chama a função para redesenhar o gráfico
-                    if (typeof desenharChaveamento === 'function') {
-                        desenharChaveamento();
+    <script>
+        function recarregarConteudo() {
+            fetch(window.location.href)
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const novoConteudo = doc.querySelector('#main-content-container');
+                    const conteudoAtual = document.querySelector('#main-content-container');
+                    if (novoConteudo && conteudoAtual) {
+                        conteudoAtual.innerHTML = novoConteudo.innerHTML;
+                        // Redesenha o chaveamento após recarregar o conteúdo
+                        if (typeof desenharChaveamento === 'function') {
+                            desenharChaveamento();
+                        }
                     }
-                }
-            })
-            .catch(err => console.error('Falha ao recarregar conteúdo:', err));
-    }
-    // Define o intervalo para chamar a função a cada 10 segundos
-    setInterval(recarregarConteudo, 10000);
-</script>
+                })
+                .catch(err => console.error('Falha ao recarregar conteúdo:', err));
+        }
+        setInterval(recarregarConteudo, 10000);
+    </script>
 {% endblock %}
