@@ -1,5 +1,35 @@
+{# Em templates/painel_publico.html #}
 {% extends "base.html" %}
 {% block title %}Painel do Torneio - {{ modalidade }}{% endblock %}
+
+{# ADICIONE ESTE BLOCO 'extra_head' #}
+{% block extra_head %}
+<style>
+    .image-placeholder {
+        background-color: #f0f2f5; /* Cor de fundo cinza claro */
+        position: relative;
+        display: inline-block; /* Garante que o container tenha o tamanho da imagem */
+    }
+    /* Centraliza o spinner dentro do placeholder */
+    .image-placeholder .spinner-border {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        margin-top: -0.75rem; /* Metade da altura do spinner */
+        margin-left: -0.75rem; /* Metade da largura do spinner */
+        width: 1.5rem;
+        height: 1.5rem;
+        color: #6c757d;
+    }
+    .lazy-load {
+        opacity: 0;
+        transition: opacity 0.4s ease-in-out;
+    }
+    .lazy-load.loaded {
+        opacity: 1;
+    }
+</style>
+{% endblock %}
 
 {% block content %}
 <div id="main-content-container">
@@ -9,6 +39,7 @@
     </div>
 
     {# 1. SEÇÃO DAS TABELAS DE CLASSIFICAÇÃO #}
+    <div id="classificacao-container">
     {% if grupos %}
         <h3 class="mt-4">Fase de Grupos - Classificação</h3>
         <div class="row row-cols-1 row-cols-md-2 g-4">
@@ -51,7 +82,7 @@
             <small><b>P:</b> Pontos | <b>J:</b> Jogos | <b>V:</b> Vitórias | <b>E:</b> Empates | <b>D:</b> Derrotas | <b>GP/PP:</b> Gols/Pontos Pró | <b>GC/PC:</b> Gols/Pontos Contra | <b>SG/SP:</b> Saldo de Gols/Pontos</small>
         </div>
     {% endif %}
-
+</div>
     {# 2. SEÇÃO DE JOGOS (EXIBIÇÃO INTELIGENTE) #}
     {% if not tem_fase_final and jogos_por_quadra %}
         <hr class="my-5">
@@ -147,68 +178,88 @@
     {% if tem_fase_final %}
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.css" />
         <script src="https://cdn.jsdelivr.net/npm/jquery-bracket@0.11.1/dist/jquery.bracket.min.js"></script>
-        <script>
-            function desenharChaveamento() {
-                var bracketContainer = $('#chaveamento-grafico-publico');
-                if (bracketContainer.length === 0) return;
-
-                const screenWidth = $(window).width();
-                let bracketOptions;
-
-                // Define opções diferentes para telas pequenas e grandes
-                if (screenWidth < 768) { // Se for tela de celular
-                    bracketOptions = {
-                        teamWidth: 120,    // Largura menor para o nome
-                        scoreWidth: 25,    // Largura menor para o placar
-                        matchMargin: 30,   // Margem horizontal menor
-                        roundMargin: 35    // Margem entre as rodadas menor
-                    };
-                } else { // Se for tela de desktop
-                    bracketOptions = {
-                        teamWidth: 200,
-                        scoreWidth: 40,
-                        matchMargin: 50,
-                        roundMargin: 50
-                    };
-                }
-
-                $.getJSON('/api/dados_mata_mata/' + "{{ modalidade }}", function(data) {
-                    if (data && data.teams && data.teams.length > 0) {
-                        bracketContainer.empty().bracket({
-                            init: data,
-                            skipConsolationRound: true,
-                            ...bracketOptions // Usa as opções corretas para o tamanho da tela
-                        });
-                    }
-                });
-            }
-
-            // Chama a função quando a página carrega
-            $(function() {
-                desenharChaveamento();
-            });
-        </script>
     {% endif %}
 
     <script>
-        function recarregarConteudo() {
-            fetch(window.location.href)
+        // FUNÇÃO 1: Desenhar o chaveamento (gráfico) com a lógica responsiva
+        function desenharChaveamento() {
+            var bracketContainer = $('#chaveamento-grafico-publico');
+            if (bracketContainer.length === 0 || typeof $.fn.bracket === 'undefined') return;
+
+            const screenWidth = $(window).width();
+            let bracketOptions;
+
+            if (screenWidth < 768) { // Se for tela de celular
+                bracketOptions = { teamWidth: 120, scoreWidth: 25, matchMargin: 30, roundMargin: 35 };
+            } else { // Se for tela de desktop
+                bracketOptions = { teamWidth: 200, scoreWidth: 40, matchMargin: 50, roundMargin: 50 };
+            }
+
+            $.getJSON('/api/dados_mata_mata/' + "{{ modalidade }}", function(data) {
+                if (data && data.teams && data.teams.length > 0) {
+                    bracketContainer.empty().bracket({ init: data, skipConsolationRound: true, ...bracketOptions });
+                }
+            });
+        }
+
+        // FUNÇÃO 2: Carregar as imagens de forma inteligente
+        function carregarImagensLazy() {
+            const lazyImages = document.querySelectorAll('img.lazy-load');
+            const imageObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const img = entry.target;
+                        const placeholder = img.parentElement;
+                        img.src = img.dataset.src;
+                        img.onload = () => {
+                            img.classList.add('loaded');
+                            const spinner = placeholder.querySelector('.spinner-border');
+                            if (spinner) spinner.style.display = 'none';
+                        };
+                        observer.unobserve(img);
+                    }
+                });
+            });
+            lazyImages.forEach(img => imageObserver.observe(img));
+        }
+
+        // FUNÇÃO 3: Atualização "Cirúrgica" dos Dados
+        function atualizarDados() {
+            fetch(window.location.href + "?_v=" + new Date().getTime())
                 .then(response => response.text())
                 .then(html => {
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(html, 'text/html');
-                    const novoConteudo = doc.querySelector('#main-content-container');
-                    const conteudoAtual = document.querySelector('#main-content-container');
-                    if (novoConteudo && conteudoAtual) {
-                        conteudoAtual.innerHTML = novoConteudo.innerHTML;
-                        // Redesenha o chaveamento após recarregar o conteúdo
-                        if (typeof desenharChaveamento === 'function') {
-                            desenharChaveamento();
-                        }
+
+                    // 1. Atualiza a tabela de classificação
+                    const novaClassificacao = doc.querySelector('#classificacao-container');
+                    const classificacaoAtual = document.querySelector('#classificacao-container');
+                    if (novaClassificacao && classificacaoAtual) {
+                        classificacaoAtual.innerHTML = novaClassificacao.innerHTML;
                     }
+
+                    // 2. Atualiza CADA placar individualmente
+                    const placaresAtuais = document.querySelectorAll('[id^="score-a-"], [id^="score-b-"]');
+                    placaresAtuais.forEach(placar => {
+                        const novoPlacar = doc.querySelector('#' + placar.id);
+                        if (novoPlacar && placar.textContent !== novoPlacar.textContent) {
+                            placar.textContent = novoPlacar.textContent;
+                        }
+                    });
+
+                    // 3. Redesenha o gráfico do mata-mata
+                    desenharChaveamento();
                 })
                 .catch(err => console.error('Falha ao recarregar conteúdo:', err));
         }
-        setInterval(recarregarConteudo, 10000);
+
+        // Roda as funções quando a página carrega pela primeira vez
+        $(function() {
+            desenharChaveamento();
+            carregarImagensLazy();
+        });
+
+        // Inicia o intervalo para a atualização inteligente
+        setInterval(atualizarDados, 4000); // 4 segundos
     </script>
 {% endblock %}

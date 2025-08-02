@@ -5,7 +5,6 @@
 <style>
     .player-grid {
         display: grid;
-        /* Cria colunas dinâmicas de no mínimo 120px */
         grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
         gap: 25px;
         text-align: center;
@@ -13,21 +12,44 @@
     .player-card img {
         width: 100px;
         height: 100px;
-        border-radius: 50%; /* Deixa a foto redonda */
+        border-radius: 50%;
         object-fit: cover;
-        border: 3px solid #dee2e6; /* Borda cinza padrão */
+        border: 3px solid #dee2e6;
         margin-bottom: 10px;
         box-shadow: 0 4px 8px rgba(0,0,0,.1);
     }
     .captain-card img {
         width: 120px;
         height: 120px;
-        border-color: #ffc107; /* Borda dourada para o capitão */
+        border-color: #ffc107;
     }
     .player-card .player-name {
         font-weight: bold;
         font-size: 0.9rem;
         line-height: 1.2;
+    }
+    /* Estilos para o carregamento da imagem */
+    .image-placeholder {
+        background-color: #f0f2f5;
+        position: relative;
+        display: inline-block;
+        border: 3px solid #dee2e6;
+        box-shadow: 0 4px 8px rgba(0,0,0,.1);
+    }
+    .image-placeholder .spinner-border {
+        position: absolute;
+        top: 50%; left: 50%;
+        margin-top: -0.75rem; margin-left: -0.75rem;
+        width: 1.5rem; height: 1.5rem; color: #6c757d;
+    }
+    .lazy-load {
+        opacity: 0;
+        transition: opacity 0.4s ease-in-out;
+    }
+    .lazy-load.loaded {
+        opacity: 1;
+        border: none; /* Remove a borda da imagem para não duplicar */
+        box-shadow: none;
     }
 </style>
 {% endblock %}
@@ -41,8 +63,11 @@
     <h3 class="mt-4 mb-3 text-center">Capitão</h3>
     <div class="d-flex justify-content-center mb-5">
         <div class="player-card captain-card">
-            <img src="{{ capitao.foto or url_for('static', filename='img/default_logo.png') }}" alt="Foto de {{ capitao.nome_completo }}">
-            <div class="player-name">{{ capitao.nome_completo }}</div>
+            <div class="image-placeholder" style="width: 120px; height: 120px; border-radius: 50%; border-color: #ffc107;">
+                <div class="spinner-border" role="status"></div>
+                <img data-src="{{ capitao.foto or url_for('static', filename='img/default_logo.png') }}" class="lazy-load" alt="Foto de {{ capitao.nome_completo }}">
+            </div>
+            <div class="player-name mt-2">{{ capitao.nome_completo }}</div>
         </div>
     </div>
     <h3 class="mt-4 mb-3 text-center">Jogadores</h3>
@@ -53,8 +78,11 @@
 <div class="player-grid">
     {% for jogador in outros_jogadores %}
     <div class="player-card">
-        <img src="{{ jogador.foto or url_for('static', filename='img/default_logo.png') }}" alt="Foto de {{ jogador.nome_completo }}">
-        <div class="player-name">{{ jogador.nome_completo }}</div>
+        <div class="image-placeholder" style="width: 100px; height: 100px; border-radius: 50%;">
+            <div class="spinner-border spinner-border-sm" role="status"></div>
+            <img data-src="{{ jogador.foto or url_for('static', filename='img/default_logo.png') }}" class="lazy-load" alt="Foto de {{ jogador.nome_completo }}">
+        </div>
+        <div class="player-name mt-2">{{ jogador.nome_completo }}</div>
     </div>
     {% endfor %}
 </div>
@@ -62,4 +90,29 @@
 <div class="text-center">
     <a href="{{ url_for('visualizar_grupos', modalidade=time.modalidade) }}" class="btn btn-secondary mt-5">Voltar ao Painel da Modalidade</a>
 </div>
+{% endblock %}
+
+{% block scripts %}
+    {{ super() }}
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            const lazyImages = document.querySelectorAll('img.lazy-load');
+            const imageObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const img = entry.target;
+                        const placeholder = img.parentElement;
+                        img.src = img.dataset.src;
+                        img.onload = () => {
+                            img.classList.add('loaded');
+                            const spinner = placeholder.querySelector('.spinner-border');
+                            if (spinner) spinner.style.display = 'none';
+                        };
+                        observer.unobserve(img);
+                    }
+                });
+            });
+            lazyImages.forEach(img => imageObserver.observe(img));
+        });
+    </script>
 {% endblock %}

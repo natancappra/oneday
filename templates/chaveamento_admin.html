@@ -34,7 +34,7 @@
                                 <div class="card-subtitle text-muted" style="font-size: 0.8rem; flex-shrink: 0;">
                                     Jogo #{{ game.ordem_na_fase }} | Local: <strong>{{ game.local or 'A definir' }}</strong>
                                 </div>
-                                <div class="d-flex justify-content-between align-items-center flex-grow-1 mt-2">
+                                <div class="d-flex justify-content-between align-items-center mt-2">
 
                                     <div class="d-flex flex-column align-items-center" style="flex: 1;">
                                         <img src="{{ game.time_a.imagem or url_for('static', filename='img/default_logo.png') }}" alt="Logo"
