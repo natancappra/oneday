@@ -27,9 +27,9 @@ from wtforms import PasswordField
 # --- Constantes do Campeonato ---
 
 # --- CONFIGURAÇÕES MANUAIS DE TEMPO (COLE AS 3 LINHAS AQUI) ---
-INTERVALO_JOGOS_FUTEBOL_MINUTOS = 20
+INTERVALO_JOGOS_FUTEBOL_MINUTOS = 17
 HORA_INICIO_JOGOS = 8  # <<-- Mude a HORA de início aqui (formato 24h)
-MINUTO_INICIO_JOGOS = 45 # <<-- Mude o MINUTO de início aqui
+MINUTO_INICIO_JOGOS = 30 # <<-- Mude o MINUTO de início aqui
 # ----------------------------------------------------------------
 
 REGIAO_OPCOES = [
@@ -1468,7 +1468,7 @@ def gerar_jogos_para_grupos_prontos(modalidade, num_quadras):
                                              microsecond=0)
 
     if 'Futebol' in modalidade:
-        duracao_jogo_min = 20
+        duracao_jogo_min = INTERVALO_JOGOS_FUTEBOL_MINUTOS
         proximo_horario_quadra = {i: horario_inicial for i in range(1, num_quadras + 1)}
         for i, (time_a, time_b) in enumerate(todos_os_confrontos_intercalados):
             quadra_agendamento = min(proximo_horario_quadra, key=proximo_horario_quadra.get)
